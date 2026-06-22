@@ -1,0 +1,55 @@
+{
+  "name": "@starter-series/icon-maker",
+  "version": "0.1.0",
+  "description": "Generate deterministic app, extension, connector, and marketplace icon sets from one config.",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "bin": {
+    "icon-maker": "bin/icon-maker.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "skills/create-icons",
+    "examples",
+    "README.md",
+    "README.ko.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "lint": "eslint src/ bin/ test/",
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/starter-series/icon-maker.git"
+  },
+  "keywords": [
+    "icons",
+    "app-icon",
+    "browser-extension",
+    "expo",
+    "electron",
+    "vscode",
+    "pwa",
+    "mcp",
+    "starter-series"
+  ],
+  "author": "heznpc",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.4.1",
+    "globals": "^17.5.0"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}

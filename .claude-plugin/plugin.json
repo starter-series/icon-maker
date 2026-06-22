@@ -1,0 +1,23 @@
+{
+  "name": "icon-maker",
+  "version": "0.1.0",
+  "description": "Generate deterministic app, extension, connector, and marketplace icon sets — bundles the create-icons skill that drives the icon-maker CLI.",
+  "author": {
+    "name": "heznpc",
+    "url": "https://github.com/heznpc"
+  },
+  "homepage": "https://github.com/starter-series/icon-maker",
+  "repository": "https://github.com/starter-series/icon-maker",
+  "license": "MIT",
+  "keywords": [
+    "icons",
+    "app-icon",
+    "browser-extension",
+    "expo",
+    "electron",
+    "vscode",
+    "pwa",
+    "mcp",
+    "claude-code"
+  ]
+}
