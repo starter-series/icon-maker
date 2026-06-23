@@ -1,7 +1,8 @@
 # Icon Maker
 
 Deterministic icon-set generator for Starter Series launch surfaces. Vanilla JS,
-CommonJS, no runtime dependencies, no build step.
+CommonJS, no build step. Runtime dependencies are scarce and explicit:
+`@resvg/resvg-js` is present only for rasterizing custom SVG source files.
 
 ## Run this tool (for agents)
 
@@ -53,4 +54,5 @@ skills/create-icons/ -> Agent skill wrapping the CLI
 npm install
 npm run lint
 npm test
+npm run pack:install-smoke
 ```

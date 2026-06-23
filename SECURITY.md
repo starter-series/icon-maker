@@ -2,8 +2,9 @@
 
 ## Supported Versions
 
-Security fixes are shipped on the latest published version of
-`@starter-series/icon-maker`.
+Before the first npm release, security fixes land on `main` and are verified by
+CI. After `@starter-series/icon-maker` is published, fixes ship on the latest
+published npm version.
 
 ## Reporting a Vulnerability
 

@@ -25,7 +25,7 @@ App icons · extension icons · connector logos · PWA icons · SVG source. One 
   public source repo, but `@starter-series/icon-maker` has not been published
   to npm yet. The commands below distinguish local development from post-npm
   release install paths.
-- **Currently implemented** — an icon compiler that renders a deterministic SVG source plus PNG outputs for `browser-extension`, `expo`, `electron`, `vscode`, `pwa`, `mcp-connector`, and `generic`; optional custom SVG source rasterization; `.ico` / `.icns` containers for app/web surfaces; preview contact sheets; a CLI (`icon-maker`) with `--json`, optional `path`, target autodetection, `--dry-run`, `--out-dir`, `--preview`, and optional manifest patching; a programmatic API (`makeIcons()`); a Claude Code skill (`skills/create-icons/`); and a plugin metadata surface (`icon-maker@starter-series`).
+- **Currently implemented** — an icon compiler that renders a deterministic SVG source plus PNG outputs for `browser-extension`, `expo`, `electron`, `vscode`, `pwa`, `mcp-connector`, and `generic`; optional custom SVG source rasterization; `.ico` / `.icns` containers for app/web surfaces; preview contact sheets; a CLI (`icon-maker`) with `--json`, optional `path`, target autodetection, `--dry-run`, `--out-dir`, `--preview`, and optional manifest patching; a programmatic API (`makeIcons()`); a Claude Code skill (`skills/create-icons/`); and source-repo plugin metadata (`icon-maker@starter-series`).
 - **Design intent** — one config, many platform outputs. Icon decisions are project intent, so the source of truth lives in `icon-maker.config.js`; platform file names and manifest wiring are mechanical.
 - **Non-goals** — AI logo generation, brand strategy, and pixel-perfect illustration. v1 is a deterministic starter-layer compiler. Use a design tool later if the brand needs custom illustration polish.
 - **Redacted** — none. The package does not use network calls, credentials, or third-party image services.
@@ -34,8 +34,14 @@ App icons · extension icons · connector logos · PWA icons · SVG source. One 
 
 ```bash
 npm install
-node bin/icon-maker.js --target auto --json
+node bin/icon-maker.js --target auto --dry-run --json
+node bin/icon-maker.js --target generic --out-dir .tmp-icon-preview --preview --json
+rm -rf .tmp-icon-preview
 ```
+
+The first command verifies target detection without writing files. The second
+uses a disposable output directory so a fresh checkout can prove generation,
+preview rendering, and the JSON contract without polluting the repo root.
 
 ## After npm Release
 
@@ -162,8 +168,9 @@ icon-maker --target auto --preview
 ## Agent Surfaces
 
 - CLI: `npx @starter-series/icon-maker <path> --target auto --json`
+- Pre-release source checkout: `node /path/to/icon-maker/bin/icon-maker.js <path> --target auto --json`
 - Skill: [`skills/create-icons/SKILL.md`](skills/create-icons/SKILL.md)
-- Plugin metadata: [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json)
+- Source plugin metadata: [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json)
 
 There is no MCP server in v1. Icon generation is file-producing local work, so the reliable surface is a CLI with a JSON contract plus a skill that tells agents when and how to run it.
 
@@ -173,4 +180,5 @@ There is no MCP server in v1. Icon generation is file-producing local work, so t
 npm install
 npm run lint
 npm test
+npm run pack:install-smoke
 ```

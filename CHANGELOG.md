@@ -6,6 +6,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+- Added packed-install smoke coverage so CI verifies the packed tarball inside a
+  fresh consumer project through both the CLI and programmatic API.
+- Clarified pre-release local/source-checkout usage before npm publication.
+
+## 0.1.0 - 2026-06-23
+
 ### Added
 - Initial deterministic icon compiler with SVG source and PNG outputs for
   `browser-extension`, `expo`, `electron`, `vscode`, `pwa`, `mcp-connector`,
@@ -23,4 +30,4 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - `icon-preview.html` contact sheet generation.
 - JSON patch writes preserve indentation/EOLs and skip already-current files.
 
-[Unreleased]: https://github.com/starter-series/icon-maker/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/starter-series/icon-maker/compare/main...HEAD
