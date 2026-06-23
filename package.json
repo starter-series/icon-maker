@@ -21,8 +21,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "lint": "eslint src/ bin/ test/",
-    "test": "node --test"
+    "lint": "eslint src/ bin/ test/ scripts/",
+    "test": "node --test",
+    "pack:install-smoke": "node scripts/verify-packed-install.js"
   },
   "repository": {
     "type": "git",

@@ -25,7 +25,7 @@
   통과하며 public source repo로도 열려 있습니다. 다만 아직
   `@starter-series/icon-maker`는 npm에 publish되지 않았습니다. 아래 명령은
   로컬 개발 경로와 npm 릴리즈 이후 설치 경로를 분리합니다.
-- **현재 구현됨** — deterministic icon compiler. 하나의 설정에서 SVG 원본과 PNG 세트를 만들고, `browser-extension`, `expo`, `electron`, `vscode`, `pwa`, `mcp-connector`, `generic` target을 지원합니다. 완성된 custom SVG source도 PNG/ICO/ICNS로 rasterize할 수 있고, preview contact sheet도 생성합니다. CLI(`icon-maker`)는 `--json`, 선택적 `path`, target 자동 감지, `--dry-run`, `--out-dir`, `--preview`, 선택적 manifest patch를 지원합니다. 프로그램 API(`makeIcons()`), Claude Code skill(`skills/create-icons/`), plugin metadata(`icon-maker@starter-series`)도 포함합니다.
+- **현재 구현됨** — deterministic icon compiler. 하나의 설정에서 SVG 원본과 PNG 세트를 만들고, `browser-extension`, `expo`, `electron`, `vscode`, `pwa`, `mcp-connector`, `generic` target을 지원합니다. 완성된 custom SVG source도 PNG/ICO/ICNS로 rasterize할 수 있고, preview contact sheet도 생성합니다. CLI(`icon-maker`)는 `--json`, 선택적 `path`, target 자동 감지, `--dry-run`, `--out-dir`, `--preview`, 선택적 manifest patch를 지원합니다. 프로그램 API(`makeIcons()`), Claude Code skill(`skills/create-icons/`), source-repo plugin metadata(`icon-maker@starter-series`)도 포함합니다.
 - **설계 의도** — 아이콘 의도는 프로젝트별 결정이므로 `icon-maker.config.js`에 둡니다. 플랫폼별 파일명과 manifest 연결은 도구가 기계적으로 처리합니다.
 - **하지 않기로 한 것** — AI 로고 생성, 브랜딩 전략, 맞춤 일러스트 polish. v1은 starter-layer compiler입니다.
 
@@ -33,11 +33,14 @@
 
 ```bash
 npm install
-node bin/icon-maker.js --init
-node bin/icon-maker.js --target auto --json
-node bin/icon-maker.js --target browser-extension --patch
-node bin/icon-maker.js --target auto --preview
+node bin/icon-maker.js --target auto --dry-run --json
+node bin/icon-maker.js --target generic --out-dir .tmp-icon-preview --preview --json
+rm -rf .tmp-icon-preview
 ```
+
+첫 번째 명령은 파일을 쓰지 않고 target detection을 확인합니다. 두 번째 명령은
+임시 출력 디렉터리를 사용해 생성, preview 렌더링, JSON contract를 검증하되
+저장소 루트를 오염시키지 않습니다.
 
 ## npm 릴리즈 이후
 
@@ -90,3 +93,12 @@ PNG/ICO/ICNS 출력은 `@resvg/resvg-js`로 rasterize합니다. `--preview`는
 확인하게 해줍니다.
 
 v1에는 MCP 서버를 넣지 않았습니다. 아이콘 생성은 파일을 쓰는 로컬 작업이라 `--json` CLI와 skill 조합이 더 단순하고 안정적입니다.
+
+## 개발
+
+```bash
+npm install
+npm run lint
+npm test
+npm run pack:install-smoke
+```

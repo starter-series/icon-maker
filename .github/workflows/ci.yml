@@ -70,6 +70,10 @@ jobs:
         if: matrix.node-version == 24
         run: npm pack --dry-run
 
+      - name: Packed install smoke
+        if: matrix.node-version == 24
+        run: npm run pack:install-smoke
+
   ci:
     needs: [static-checks, test]
     if: always()

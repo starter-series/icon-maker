@@ -1,7 +1,7 @@
 ---
 name: create-icons
 description: Generate app, browser-extension, PWA, VS Code, Electron, or MCP connector icon assets with icon-maker. Use when asked to create or refresh icon files, starter placeholder icons, connector logos, extension manifest icons, Expo app icons, or launch asset icon sets for a repo.
-allowed-tools: Bash(npx @starter-series/icon-maker*), Bash(npm run icon:*), Read, Edit
+allowed-tools: Bash(npx @starter-series/icon-maker*), Bash(node *icon-maker*/bin/icon-maker.js*), Bash(npm run icon:*), Read, Edit
 ---
 
 # Create icon assets with icon-maker
@@ -40,6 +40,15 @@ wire manifests, and make launch surfaces coherent before custom design polish.
    updated. Use `--preview` when the user needs to inspect tiny sizes or
    transparent backgrounds. Use `--dry-run --json` to preview output paths
    without writing.
+
+   If the npm package is not published or you are validating the source checkout,
+   use the source CLI path instead of `npx`:
+
+   ```bash
+   node /path/to/icon-maker/bin/icon-maker.js <repo> --init
+   node /path/to/icon-maker/bin/icon-maker.js <repo> --target auto --json
+   node /path/to/icon-maker/bin/icon-maker.js <repo> --target browser-extension --patch --json
+   ```
 4. **Verify** — read the JSON result, check `produced[]`, and inspect any
    `warnings[]`. If `--patch` was used, verify the relevant file:
    `manifest.json`, `app.json`, `package.json`, or `public/manifest.json`.
