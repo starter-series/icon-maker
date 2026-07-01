@@ -22,7 +22,7 @@ App icons · extension icons · connector logos · PWA icons · SVG source. One 
 ## Status & Scope
 
 - **Pre-release** — the package is implemented, packable, and available as a
-  public source repo, but `@starter-series/icon-maker` has not been published
+  public source repo, but `iconkit` has not been published
   to npm yet. The commands below distinguish local development from post-npm
   release install paths.
 - **Currently implemented** — an icon compiler that renders a deterministic SVG source plus PNG outputs for `browser-extension`, `expo`, `electron`, `vscode`, `pwa`, `mcp-connector`, and `generic`; optional custom SVG source rasterization; `.ico` / `.icns` containers for app/web surfaces; preview contact sheets; a CLI (`icon-maker`) with `--json`, optional `path`, target autodetection, `--dry-run`, `--out-dir`, `--preview`, and optional manifest patching; a programmatic API (`makeIcons()`); a Claude Code skill (`skills/create-icons/`); and source-repo plugin metadata (`icon-maker@starter-series`).
@@ -48,13 +48,13 @@ preview rendering, and the JSON contract without polluting the repo root.
 Install in a consuming repo:
 
 ```bash
-npm i -D @starter-series/icon-maker
+npm i -D iconkit
 ```
 
 Zero-install:
 
 ```bash
-npx @starter-series/icon-maker --target auto --json
+npx iconkit --target auto --json
 ```
 
 Claude Code plugin path after the public plugin entry exists:
@@ -167,8 +167,8 @@ icon-maker --target auto --preview
 
 ## Agent Surfaces
 
-- CLI: `npx @starter-series/icon-maker <path> --target auto --json`
-- Pre-release source checkout: `node /path/to/icon-maker/bin/icon-maker.js <path> --target auto --json`
+- Current source checkout: `node /path/to/icon-maker/bin/icon-maker.js <path> --target auto --json`
+- Published CLI after npm release: `npx iconkit <path> --target auto --json`
 - Skill: [`skills/create-icons/SKILL.md`](skills/create-icons/SKILL.md)
 - Source plugin metadata: [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json)
 

@@ -23,7 +23,7 @@
 
 - **Pre-release** — 패키지는 구현되어 있고 `npm pack --dry-run`까지
   통과하며 public source repo로도 열려 있습니다. 다만 아직
-  `@starter-series/icon-maker`는 npm에 publish되지 않았습니다. 아래 명령은
+  `iconkit`은 npm에 publish되지 않았습니다. 아래 명령은
   로컬 개발 경로와 npm 릴리즈 이후 설치 경로를 분리합니다.
 - **현재 구현됨** — deterministic icon compiler. 하나의 설정에서 SVG 원본과 PNG 세트를 만들고, `browser-extension`, `expo`, `electron`, `vscode`, `pwa`, `mcp-connector`, `generic` target을 지원합니다. 완성된 custom SVG source도 PNG/ICO/ICNS로 rasterize할 수 있고, preview contact sheet도 생성합니다. CLI(`icon-maker`)는 `--json`, 선택적 `path`, target 자동 감지, `--dry-run`, `--out-dir`, `--preview`, 선택적 manifest patch를 지원합니다. 프로그램 API(`makeIcons()`), Claude Code skill(`skills/create-icons/`), source-repo plugin metadata(`icon-maker@starter-series`)도 포함합니다.
 - **설계 의도** — 아이콘 의도는 프로젝트별 결정이므로 `icon-maker.config.js`에 둡니다. 플랫폼별 파일명과 manifest 연결은 도구가 기계적으로 처리합니다.
@@ -45,8 +45,8 @@ rm -rf .tmp-icon-preview
 ## npm 릴리즈 이후
 
 ```bash
-npm i -D @starter-series/icon-maker
-npx @starter-series/icon-maker --target auto --json
+npm i -D iconkit
+npx iconkit --target auto --json
 ```
 
 ## 설정
@@ -91,6 +91,13 @@ module.exports = {
 PNG/ICO/ICNS 출력은 `@resvg/resvg-js`로 rasterize합니다. `--preview`는
 `icon-preview.html` contact sheet를 만들어 작은 사이즈와 투명 배경을 빠르게
 확인하게 해줍니다.
+
+## Agent Surfaces
+
+- 현재 source checkout: `node /path/to/icon-maker/bin/icon-maker.js <path> --target auto --json`
+- npm 릴리즈 이후 공개 CLI: `npx iconkit <path> --target auto --json`
+- Skill: [`skills/create-icons/SKILL.md`](skills/create-icons/SKILL.md)
+- Source plugin metadata: [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json)
 
 v1에는 MCP 서버를 넣지 않았습니다. 아이콘 생성은 파일을 쓰는 로컬 작업이라 `--json` CLI와 skill 조합이 더 단순하고 안정적입니다.
 

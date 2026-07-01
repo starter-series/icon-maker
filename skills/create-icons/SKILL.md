@@ -1,7 +1,7 @@
 ---
 name: create-icons
 description: Generate app, browser-extension, PWA, VS Code, Electron, or MCP connector icon assets with icon-maker. Use when asked to create or refresh icon files, starter placeholder icons, connector logos, extension manifest icons, Expo app icons, or launch asset icon sets for a repo.
-allowed-tools: Bash(npx @starter-series/icon-maker*), Bash(node *icon-maker*/bin/icon-maker.js*), Bash(npm run icon:*), Read, Edit
+allowed-tools: Bash(npx iconkit*), Bash(node *icon-maker*/bin/icon-maker.js*), Bash(npm run icon:*), Read, Edit
 ---
 
 # Create icon assets with icon-maker
@@ -19,21 +19,37 @@ wire manifests, and make launch surfaces coherent before custom design polish.
    - Electron deps -> `electron`
    - `public/manifest.json` -> `pwa`
    - `server.json` -> `mcp-connector`
-2. **Create or update config** — if there is no `icon-maker.config.js`, run:
+2. **Create or update config** — if there is no `icon-maker.config.js`, run
+   the source checkout while this package is pre-release:
 
    ```bash
-   npx @starter-series/icon-maker --init
+   node /path/to/icon-maker/bin/icon-maker.js --init
+   ```
+
+   After `iconkit` is published to npm, the equivalent public command is:
+
+   ```bash
+   npx iconkit --init
    ```
 
    Then edit `mark.background`, `mark.foreground`, `mark.accent`, and
    `mark.glyph` (`braces`, `spark`, or `bolt`) to match the product.
-3. **Generate**:
+3. **Generate** from the source checkout while this package is pre-release:
 
    ```bash
-   npx @starter-series/icon-maker --target auto --json
-   npx @starter-series/icon-maker --target browser-extension --patch --json
-   npx @starter-series/icon-maker <path> --target expo --json
-   npx @starter-series/icon-maker --target auto --preview --json
+   node /path/to/icon-maker/bin/icon-maker.js --target auto --json
+   node /path/to/icon-maker/bin/icon-maker.js --target browser-extension --patch --json
+   node /path/to/icon-maker/bin/icon-maker.js <path> --target expo --json
+   node /path/to/icon-maker/bin/icon-maker.js --target auto --preview --json
+   ```
+
+   After npm release:
+
+   ```bash
+   npx iconkit --target auto --json
+   npx iconkit --target browser-extension --patch --json
+   npx iconkit <path> --target expo --json
+   npx iconkit --target auto --preview --json
    ```
 
    Use `--patch` only when the user wants manifest/app/package icon references
@@ -41,8 +57,8 @@ wire manifests, and make launch surfaces coherent before custom design polish.
    transparent backgrounds. Use `--dry-run --json` to preview output paths
    without writing.
 
-   If the npm package is not published or you are validating the source checkout,
-   use the source CLI path instead of `npx`:
+   If you are validating a different source checkout, pass that checkout path
+   explicitly:
 
    ```bash
    node /path/to/icon-maker/bin/icon-maker.js <repo> --init

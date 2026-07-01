@@ -38,7 +38,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Check licenses
-        run: npx license-checker-evergreen --failOn "GPL-2.0;GPL-3.0;AGPL-3.0"
+        run: npm exec -- license-checker-evergreen --failOn "GPL-2.0;GPL-3.0;AGPL-3.0"
 
       - name: Security audit
         run: npm audit --audit-level=high

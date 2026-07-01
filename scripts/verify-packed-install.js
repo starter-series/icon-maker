@@ -89,7 +89,7 @@ try {
   const apiScript = `
 const fs = require('node:fs');
 const path = require('node:path');
-const { makeIcons } = require('@starter-series/icon-maker');
+const { makeIcons } = require('iconkit');
 const cwd = path.resolve('api-consumer');
 fs.mkdirSync(cwd, { recursive: true });
 const result = makeIcons({

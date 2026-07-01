@@ -1,5 +1,5 @@
 {
-  "name": "@starter-series/icon-maker",
+  "name": "iconkit",
   "version": "0.1.0",
   "description": "Generate deterministic app, extension, connector, and marketplace icon sets from one config.",
   "main": "src/index.js",
@@ -7,6 +7,7 @@
     ".": "./src/index.js"
   },
   "bin": {
+    "iconkit": "bin/icon-maker.js",
     "icon-maker": "bin/icon-maker.js"
   },
   "files": [
@@ -48,7 +49,8 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.4.1",
-    "globals": "^17.5.0"
+    "globals": "^17.5.0",
+    "license-checker-evergreen": "^6.3.1"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2"
