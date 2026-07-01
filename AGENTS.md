@@ -6,11 +6,18 @@ CommonJS, no build step. Runtime dependencies are scarce and explicit:
 
 ## Run this tool (for agents)
 
-Generate icon assets from a repo:
+Generate icon assets from this source checkout:
 
 ```bash
-npx @starter-series/icon-maker --target auto --json
-npx @starter-series/icon-maker <path> --target browser-extension --patch --json
+node bin/icon-maker.js --target auto --json
+node bin/icon-maker.js <path> --target browser-extension --patch --json
+```
+
+After `iconkit` is published to npm, the equivalent public commands are:
+
+```bash
+npx iconkit --target auto --json
+npx iconkit <path> --target browser-extension --patch --json
 ```
 
 `--json` prints exactly one JSON object to stdout. Exit codes: `0` ok, `1`
