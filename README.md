@@ -149,6 +149,12 @@ SVG outputs copy that source, while PNG/ICO/ICNS outputs are rasterized through
 `@resvg/resvg-js`. Keep the source SVG self-contained: inline fills/strokes and
 avoid remote fonts or external images.
 
+> **Security:** the SVG output (e.g. `favicon.svg`) is copied from `mark.source`
+> **verbatim** — icon-maker does not sanitize it. An SVG can carry `<script>` or
+> event-handler attributes that execute when the file is opened or served
+> directly in a browser. Only point `mark.source` at SVGs you author or trust;
+> never feed it an untrusted third-party SVG whose output you then serve.
+
 ## Preview
 
 `--preview` writes `icon-preview.html`, a local contact sheet for checking tiny

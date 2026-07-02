@@ -3,6 +3,9 @@ const path = require('path');
 const { contrastRatio } = require('./color');
 
 const CONFIG_NAME = 'icon-maker.config.js';
+// Data-only config: parsed with JSON.parse, never executed. Preferred over the
+// .js form when auto-discovering, since it cannot run arbitrary code.
+const CONFIG_JSON_NAME = 'icon-maker.config.json';
 
 function titleFromName(name) {
   return String(name || 'icon-maker')
@@ -73,15 +76,47 @@ function mergeConfig(base, override) {
 
 function resolveConfigPath(explicit, cwd) {
   if (explicit) return path.resolve(cwd, explicit);
+  // Prefer the data-only JSON config so auto-discovery never executes code.
+  const jsonCandidate = path.join(cwd, CONFIG_JSON_NAME);
+  if (fs.existsSync(jsonCandidate)) return jsonCandidate;
   const candidate = path.join(cwd, CONFIG_NAME);
   return fs.existsSync(candidate) ? candidate : null;
+}
+
+// True when `dir` resolves to the same real path as the current working
+// directory (the invoker's own directory). Uses realpath so `.`/symlink
+// variants cannot bypass the check.
+function isInvokerCwd(dir) {
+  try {
+    return fs.realpathSync(dir) === fs.realpathSync(process.cwd());
+  } catch (_err) {
+    return false;
+  }
+}
+
+function loadConfigFile(configPath, autoDiscovered, cwd) {
+  if (configPath.endsWith('.json')) {
+    // Data-only: parsed, never executed.
+    return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  }
+  // A .js config is executed as Node.js code. Refuse to auto-execute one
+  // discovered inside a *target* checkout (cwd differs from the invoker's own
+  // directory) — that is the untrusted-repo scenario the create-icons skill
+  // creates. An explicit --config path is treated as user opt-in.
+  if (autoDiscovered && !isInvokerCwd(cwd)) {
+    throw new Error(
+      `refusing to execute auto-discovered ${path.basename(configPath)} from a target directory; ` +
+        `use ${CONFIG_JSON_NAME} for untrusted targets or pass --config explicitly`,
+    );
+  }
+  delete require.cache[require.resolve(configPath)];
+  return require(configPath);
 }
 
 function loadConfig(cwd, explicit) {
   const configPath = resolveConfigPath(explicit, cwd);
   if (!configPath) return { config: defaultConfig(cwd), configPath: null };
-  delete require.cache[require.resolve(configPath)];
-  const loaded = require(configPath);
+  const loaded = loadConfigFile(configPath, !explicit, cwd);
   return { config: mergeConfig(defaultConfig(cwd), loaded || {}), configPath };
 }
 
@@ -124,6 +159,7 @@ function validateConfig(config) {
 
 module.exports = {
   CONFIG_NAME,
+  CONFIG_JSON_NAME,
   defaultConfig,
   initTargets,
   loadConfig,
