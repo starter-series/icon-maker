@@ -76,7 +76,7 @@ function makeIcons(inputConfig = null, opts = {}) {
     }
   }
 
-  const patches = write && opts.patch ? applyPatches(cwd, targets, produced) : [];
+  const patches = write && opts.patch ? applyPatches(cwd, targets, produced, warnings) : [];
   let preview = null;
   if (write && opts.preview) {
     const absolutePath = previewPath(cwd, opts);
