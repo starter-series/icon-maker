@@ -30,6 +30,11 @@ function decodeFirstPixelAlpha(png) {
   return raw[4];
 }
 
+function pngDimensions(png) {
+  assert.deepEqual(png.subarray(0, PNG_SIGNATURE.length), PNG_SIGNATURE);
+  return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+}
+
 const config = {
   project: { name: 'Example App' },
   mark: {
@@ -182,6 +187,26 @@ describe('makeIcons', () => {
     assert.ok(svg.includes('<circle cx="32"'));
     assert.deepEqual(fs.readFileSync(path.join(cwd, 'assets', 'icon.png')).subarray(0, PNG_SIGNATURE.length), PNG_SIGNATURE);
     assert.equal(result.produced.length, 2);
+  });
+
+  test('renders non-square custom SVG source into square PNG outputs', () => {
+    const cwd = tempDir();
+    fs.mkdirSync(path.join(cwd, 'brand'));
+    fs.writeFileSync(path.join(cwd, 'brand', 'wide.svg'), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><rect width="100" height="50" fill="#000"/></svg>');
+    makeIcons({ ...config, mark: { source: './brand/wide.svg' } }, { cwd, targets: ['generic'] });
+    const png = fs.readFileSync(path.join(cwd, 'assets', 'icon.png'));
+    assert.deepEqual(pngDimensions(png), { width: 1024, height: 1024 });
+  });
+
+  test('rejects custom SVG sources outside the target directory', () => {
+    const cwd = tempDir();
+    const outside = tempDir();
+    fs.writeFileSync(path.join(outside, 'logo.svg'), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"></svg>');
+    const source = path.relative(cwd, path.join(outside, 'logo.svg'));
+    assert.throws(
+      () => makeIcons({ ...config, mark: { source } }, { cwd, targets: ['generic'] }),
+      /mark\.source must stay inside the target directory/,
+    );
   });
 
   test('groups target outputs under outDir when requested', () => {

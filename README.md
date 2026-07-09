@@ -83,7 +83,9 @@ icon-maker --target auto --preview
 icon-maker --dry-run --json
 ```
 
-`--json` prints one machine-readable object to stdout:
+`--json` prints one machine-readable object to stdout. If an explicit or
+trusted local `.js` config writes to stdout while loading, icon-maker routes
+that config noise to stderr so stdout remains parseable:
 
 ```json
 {
@@ -150,8 +152,9 @@ module.exports = {
 ```
 
 SVG outputs copy that source, while PNG/ICO/ICNS outputs are rasterized through
-`@resvg/resvg-js`. Keep the source SVG self-contained: inline fills/strokes and
-avoid remote fonts or external images.
+`@resvg/resvg-js` into square transparent canvases using contain scaling. Keep
+the source SVG inside the target directory and self-contained: inline
+fills/strokes and avoid remote fonts or external images.
 
 > **Security:** the SVG output (e.g. `favicon.svg`) is copied from `mark.source`
 > **verbatim** — icon-maker does not sanitize it. An SVG can carry `<script>` or

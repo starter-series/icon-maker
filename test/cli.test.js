@@ -57,4 +57,37 @@ describe('cli args', () => {
     assert.ok(text.includes("glyph: \"spark\""));
     assert.ok(text.includes('targets: ["expo"]'));
   });
+
+  test('init honors an explicit JSON config path', () => {
+    const cwd = tempDir();
+    const bin = path.resolve(__dirname, '..', 'bin', 'icon-maker.js');
+    const result = spawnSync(
+      process.execPath,
+      [bin, cwd, '--init', '--config', 'custom.config.json', '--target', 'expo', '--json'],
+      { encoding: 'utf8' },
+    );
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(result.status, 0);
+    assert.equal(result.stderr, '');
+    assert.equal(parsed.created, true);
+    assert.equal(parsed.configPath, path.join(cwd, 'custom.config.json'));
+    assert.equal(fs.existsSync(path.join(cwd, 'custom.config.json')), true);
+    assert.equal(fs.existsSync(path.join(cwd, 'icon-maker.config.js')), false);
+    assert.deepEqual(JSON.parse(fs.readFileSync(parsed.configPath, 'utf8')).targets, ['expo']);
+  });
+
+  test('--json keeps stdout parseable when a JS config writes to stdout', () => {
+    const cwd = tempDir();
+    const bin = path.resolve(__dirname, '..', 'bin', 'icon-maker.js');
+    fs.writeFileSync(
+      path.join(cwd, 'icon-maker.config.js'),
+      "console.log('CONFIG_NOISE'); module.exports = { project: { name: 'Noisy' }, targets: ['generic'] };\n",
+    );
+    const result = spawnSync(process.execPath, [bin, '--dry-run', '--json'], { cwd, encoding: 'utf8' });
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(result.status, 0);
+    assert.equal(parsed.ok, true);
+    assert.equal(result.stdout.trim().split('\n').length, 1);
+    assert.match(result.stderr, /CONFIG_NOISE/);
+  });
 });

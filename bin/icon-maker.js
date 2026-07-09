@@ -33,6 +33,17 @@ function writeResult(opts, result) {
   }
 }
 
+function isolateJsonStdout(enabled, fn) {
+  if (!enabled) return fn();
+  const originalWrite = process.stdout.write;
+  process.stdout.write = process.stderr.write.bind(process.stderr);
+  try {
+    return fn();
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help) {
@@ -42,12 +53,12 @@ async function main() {
 
   const cwd = path.resolve(process.cwd(), opts.path || '.');
   if (opts.init) {
-    const result = { ok: true, cwd, ...initConfig(cwd, opts.targets), ...configStatus(cwd, opts.config) };
+    const result = { ok: true, cwd, ...initConfig(cwd, opts.targets, opts.config), ...configStatus(cwd, opts.config) };
     writeResult(opts, result);
     return;
   }
 
-  const result = makeIcons(null, {
+  const result = isolateJsonStdout(opts.json, () => makeIcons(null, {
     cwd,
     config: opts.config,
     targets: opts.targets,
@@ -55,7 +66,7 @@ async function main() {
     patch: opts.patch,
     preview: opts.preview,
     write: !opts.dryRun,
-  });
+  }));
   writeResult(opts, result);
 }
 

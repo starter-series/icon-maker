@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { CONFIG_NAME, renderDefaultConfig, resolveConfigPath } = require('./config');
+const { CONFIG_NAME, renderDefaultConfig, renderDefaultJsonConfig, resolveConfigPath } = require('./config');
 
 const USAGE = `icon-maker — generate deterministic icon sets for launch surfaces
 
@@ -18,8 +18,8 @@ Options:
   --patch             update known manifest/app/package icon fields after writing
   --preview           write icon-preview.html contact sheet next to the outputs
   --dry-run           compute outputs without writing files
-  --init              write icon-maker.config.js if it does not exist;
-                      combine with --target for a target-specific preset
+  --init              write a config file if it does not exist; defaults to
+                      icon-maker.config.js, or use --config for a custom path
   --json              stdout gets exactly one JSON object
   -h, --help          show this help
 
@@ -76,12 +76,15 @@ function parseArgs(argv) {
   return opts;
 }
 
-function initConfig(cwd, targets = []) {
-  const configPath = path.join(cwd, CONFIG_NAME);
+function initConfig(cwd, targets = [], explicit = null) {
+  const existingPath = explicit ? path.resolve(cwd, explicit) : resolveConfigPath(null, cwd);
+  const configPath = existingPath || path.join(cwd, CONFIG_NAME);
   if (fs.existsSync(configPath)) {
     return { created: false, configPath };
   }
-  fs.writeFileSync(configPath, renderDefaultConfig(cwd, targets.length ? targets : ['auto']));
+  const render = configPath.endsWith('.json') ? renderDefaultJsonConfig : renderDefaultConfig;
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, render(cwd, targets.length ? targets : ['auto']));
   return { created: true, configPath };
 }
 

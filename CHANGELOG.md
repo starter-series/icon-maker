@@ -18,6 +18,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ### Fixed
 - Report CLI usage errors, including unknown flags and unknown targets, with
   the documented exit code `2` and parseable `--json` error output.
+- Keep `--json` stdout parseable even when a trusted local `.js` config writes
+  incidental output while loading.
+- Honor `--init --config <path>` by creating and reporting the requested config
+  file, including data-only `.json` configs.
+- Render non-square `mark.source` SVGs into square PNG/ICO/ICNS canvases and
+  reject source paths that resolve outside the target directory.
 
 ## 0.1.0 - 2026-06-23
 

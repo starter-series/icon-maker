@@ -123,6 +123,10 @@ function renderDefaultConfig(cwd = process.cwd(), targets = ['auto']) {
 `;
 }
 
+function renderDefaultJsonConfig(cwd = process.cwd(), targets = ['auto']) {
+  return `${JSON.stringify(defaultConfig(cwd, targets), null, 2)}\n`;
+}
+
 function validateConfig(config) {
   const warnings = [];
   const background = config.mark?.background || '#111827';
@@ -147,6 +151,7 @@ module.exports = {
   loadConfig,
   mergeConfig,
   renderDefaultConfig,
+  renderDefaultJsonConfig,
   resolveConfigPath,
   validateConfig,
 };

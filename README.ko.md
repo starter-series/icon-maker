@@ -92,9 +92,10 @@ module.exports = {
 `--patch`를 주면 존재하는 manifest/config를 찾아 icon 경로를 갱신합니다.
 
 `mark.source`에 완성된 SVG 파일을 지정하면 SVG 출력은 원본을 복사하고,
-PNG/ICO/ICNS 출력은 `@resvg/resvg-js`로 rasterize합니다. `--preview`는
-`icon-preview.html` contact sheet를 만들어 작은 사이즈와 투명 배경을 빠르게
-확인하게 해줍니다.
+PNG/ICO/ICNS 출력은 `@resvg/resvg-js`로 정사각형 투명 캔버스에 contain
+방식으로 rasterize합니다. source SVG는 대상 디렉터리 안에 있어야 합니다.
+`--preview`는 `icon-preview.html` contact sheet를 만들어 작은 사이즈와 투명
+배경을 빠르게 확인하게 해줍니다.
 
 ## Agent Surfaces
 
