@@ -26,7 +26,7 @@ App icons · extension icons · connector logos · PWA icons · SVG source. One 
   to npm yet. The commands below distinguish local development from post-npm
   release install paths.
 - **Currently implemented** — an icon compiler that renders a deterministic SVG source plus PNG outputs for `browser-extension`, `expo`, `electron`, `vscode`, `pwa`, `mcp-connector`, and `generic`; optional custom SVG source rasterization; `.ico` / `.icns` containers for app/web surfaces; preview contact sheets; a CLI (`icon-maker`) with `--json`, optional `path`, target autodetection, `--dry-run`, `--out-dir`, `--preview`, and optional manifest patching; a programmatic API (`makeIcons()`); a Claude Code skill (`skills/create-icons/`); and source-repo plugin metadata (`icon-maker@starter-series`).
-- **Design intent** — one config, many platform outputs. Icon decisions are project intent, so the source of truth lives in `icon-maker.config.js`; platform file names and manifest wiring are mechanical.
+- **Design intent** — one config, many platform outputs. Icon decisions are project intent, so the source of truth lives in `icon-maker.config.js` or the data-only `icon-maker.config.json`; platform file names and manifest wiring are mechanical.
 - **Non-goals** — AI logo generation, brand strategy, and pixel-perfect illustration. v1 is a deterministic starter-layer compiler. Use a design tool later if the brand needs custom illustration polish.
 - **Redacted** — none. The package does not use network calls, credentials, or third-party image services.
 
@@ -119,6 +119,10 @@ module.exports = {
   targets: ['auto'],
 };
 ```
+
+For untrusted target checkouts, prefer `icon-maker.config.json`. Auto-discovery
+loads the JSON form first and refuses to auto-execute a target repo's
+`icon-maker.config.js` unless the path is passed explicitly with `--config`.
 
 ## Targets
 

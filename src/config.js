@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { contrastRatio } = require('./color');
+const { markPresetForTargets, splitTargetList } = require('./targets');
 
 const CONFIG_NAME = 'icon-maker.config.js';
 // Data-only config: parsed with JSON.parse, never executed. Preferred over the
@@ -22,28 +23,9 @@ function readPackage(cwd) {
   }
 }
 
-const TARGET_MARK_PRESETS = {
-  'browser-extension': { glyph: 'braces', shape: 'squircle', background: '#111827', foreground: '#f8fafc', accent: '#38bdf8' },
-  expo: { glyph: 'spark', shape: 'squircle', background: '#4630eb', foreground: '#ffffff', accent: '#a7f3d0' },
-  electron: { glyph: 'bolt', shape: 'squircle', background: '#1f2937', foreground: '#f9fafb', accent: '#fbbf24' },
-  vscode: { glyph: 'braces', shape: 'squircle', background: '#0f172a', foreground: '#f8fafc', accent: '#60a5fa' },
-  pwa: { glyph: 'spark', shape: 'circle', background: '#0f766e', foreground: '#ffffff', accent: '#facc15' },
-  'mcp-connector': { glyph: 'braces', shape: 'squircle', background: '#18181b', foreground: '#fafafa', accent: '#a78bfa' },
-  generic: { glyph: 'braces', shape: 'squircle', background: '#111827', foreground: '#f8fafc', accent: '#38bdf8' },
-};
-
-function splitTargetList(values) {
-  return values.flatMap((value) => String(value).split(',')).map((value) => value.trim()).filter(Boolean);
-}
-
 function initTargets(targets) {
   const normalized = splitTargetList(targets && targets.length ? targets : ['auto']);
   return normalized.length ? [...new Set(normalized)] : ['auto'];
-}
-
-function markPresetForTargets(targets) {
-  const firstConcrete = targets.find((target) => target !== 'auto') || 'generic';
-  return TARGET_MARK_PRESETS[firstConcrete] || TARGET_MARK_PRESETS.generic;
 }
 
 function defaultConfig(cwd = process.cwd(), targets = ['auto']) {

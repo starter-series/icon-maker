@@ -29,14 +29,30 @@ function renderPng(config, file, size, source) {
   return rasterizePrimitives(size, buildPrimitives(size, fileConfig(config, file)));
 }
 
-function renderFile(config, file, source) {
+function pngCacheKey(file, size, source) {
+  const sourceMode = source ? 'source' : 'generated';
+  const backgroundMode = file.transparentBackground ? 'transparent' : 'default';
+  return `${sourceMode}:${backgroundMode}:${size}`;
+}
+
+function createRenderer(config, source) {
+  const pngCache = new Map();
+  function cachedPng(file, size) {
+    const key = pngCacheKey(file, size, source);
+    if (!pngCache.has(key)) pngCache.set(key, renderPng(config, file, size, source));
+    return pngCache.get(key);
+  }
+  return (file) => renderFile(config, file, source, cachedPng);
+}
+
+function renderFile(config, file, source, renderCachedPng = (pngFile, size) => renderPng(config, pngFile, size, source)) {
   if (file.format === 'svg') return source ? source.svg : renderSvg(fileConfig(config, file), { size: file.size });
-  if (file.format === 'png') return renderPng(config, file, file.size, source);
+  if (file.format === 'png') return renderCachedPng(file, file.size);
   if (file.format === 'ico') {
-    return encodeIco(file.sizes.map((size) => ({ size, png: renderPng(config, file, size, source) })));
+    return encodeIco(file.sizes.map((size) => ({ size, png: renderCachedPng(file, size) })));
   }
   if (file.format === 'icns') {
-    return encodeIcns(file.sizes.map((size) => ({ size, png: renderPng(config, file, size, source) })));
+    return encodeIcns(file.sizes.map((size) => ({ size, png: renderCachedPng(file, size) })));
   }
   throw new Error(`Unsupported icon output format: ${file.format}`);
 }
@@ -52,6 +68,7 @@ function makeIcons(inputConfig = null, opts = {}) {
   const targets = resolveTargets(opts.targets || [], cwd, config.targets);
   const warnings = validateConfig(config);
   const source = loadSourceSvg(cwd, config);
+  const render = createRenderer(config, source);
   const produced = [];
   const write = opts.write !== false;
 
@@ -59,7 +76,7 @@ function makeIcons(inputConfig = null, opts = {}) {
     const def = TARGETS[target];
     for (const file of def.files) {
       const absolutePath = outputPath(cwd, opts, target, file.path);
-      const contents = renderFile(config, file, source);
+      const contents = render(file);
       if (write) {
         ensureDir(absolutePath);
         fs.writeFileSync(absolutePath, contents);

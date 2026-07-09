@@ -13,7 +13,7 @@ Options:
   --target <name>     target to generate: auto, browser-extension, expo,
                       electron, vscode, pwa, mcp-connector, generic.
                       Repeatable or comma-separated. Default: config targets or auto.
-  --config <path>     config file (default: icon-maker.config.js if present)
+  --config <path>     config file (default: icon-maker.config.json, then .js)
   --out-dir <path>    write generated files under this directory, grouped by target
   --patch             update known manifest/app/package icon fields after writing
   --preview           write icon-preview.html contact sheet next to the outputs
@@ -25,6 +25,18 @@ Options:
 
 Exit codes: 0 ok · 1 runtime failure · 2 usage/init conflict
 `;
+
+function usageError(message) {
+  const err = new Error(message);
+  err.exitCode = 2;
+  return err;
+}
+
+function readOptionValue(argv, index, option) {
+  const value = argv[index + 1];
+  if (!value || value.startsWith('-')) throw usageError(`${option} requires a value`);
+  return value;
+}
 
 function parseArgs(argv) {
   const opts = {
@@ -41,9 +53,16 @@ function parseArgs(argv) {
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--target') opts.targets.push(...String(argv[++i] || '').split(',').filter(Boolean));
-    else if (arg === '--config') opts.config = argv[++i];
-    else if (arg === '--out-dir') opts.outDir = argv[++i];
+    if (arg === '--target') {
+      opts.targets.push(...String(readOptionValue(argv, i, arg)).split(',').map((value) => value.trim()).filter(Boolean));
+      i++;
+    } else if (arg === '--config') {
+      opts.config = readOptionValue(argv, i, arg);
+      i++;
+    } else if (arg === '--out-dir') {
+      opts.outDir = readOptionValue(argv, i, arg);
+      i++;
+    }
     else if (arg === '--patch') opts.patch = true;
     else if (arg === '--preview') opts.preview = true;
     else if (arg === '--dry-run') opts.dryRun = true;
@@ -51,6 +70,8 @@ function parseArgs(argv) {
     else if (arg === '--json') opts.json = true;
     else if (arg === '-h' || arg === '--help') opts.help = true;
     else if (!arg.startsWith('-') && opts.path === null) opts.path = arg;
+    else if (arg.startsWith('-')) throw usageError(`Unknown option: ${arg}`);
+    else throw usageError(`Unexpected positional argument: ${arg}`);
   }
   return opts;
 }
@@ -69,4 +90,4 @@ function configStatus(cwd, explicit) {
   return { configPath };
 }
 
-module.exports = { USAGE, parseArgs, initConfig, configStatus };
+module.exports = { USAGE, parseArgs, initConfig, configStatus, usageError };

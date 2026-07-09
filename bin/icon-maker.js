@@ -61,7 +61,8 @@ async function main() {
 
 main().catch((err) => {
   const msg = err && err.message ? err.message : String(err);
-  if (process.argv.includes('--json')) process.stdout.write(`${JSON.stringify({ ok: false, error: msg, code: 1 })}\n`);
+  const code = err && err.exitCode ? err.exitCode : 1;
+  if (process.argv.includes('--json')) process.stdout.write(`${JSON.stringify({ ok: false, error: msg, code })}\n`);
   else console.error('[icon-maker] FAILED:', err && err.stack ? err.stack : err);
-  process.exit(1);
+  process.exit(code);
 });

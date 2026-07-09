@@ -26,7 +26,7 @@
   `iconkit`은 npm에 publish되지 않았습니다. 아래 명령은
   로컬 개발 경로와 npm 릴리즈 이후 설치 경로를 분리합니다.
 - **현재 구현됨** — deterministic icon compiler. 하나의 설정에서 SVG 원본과 PNG 세트를 만들고, `browser-extension`, `expo`, `electron`, `vscode`, `pwa`, `mcp-connector`, `generic` target을 지원합니다. 완성된 custom SVG source도 PNG/ICO/ICNS로 rasterize할 수 있고, preview contact sheet도 생성합니다. CLI(`icon-maker`)는 `--json`, 선택적 `path`, target 자동 감지, `--dry-run`, `--out-dir`, `--preview`, 선택적 manifest patch를 지원합니다. 프로그램 API(`makeIcons()`), Claude Code skill(`skills/create-icons/`), source-repo plugin metadata(`icon-maker@starter-series`)도 포함합니다.
-- **설계 의도** — 아이콘 의도는 프로젝트별 결정이므로 `icon-maker.config.js`에 둡니다. 플랫폼별 파일명과 manifest 연결은 도구가 기계적으로 처리합니다.
+- **설계 의도** — 아이콘 의도는 프로젝트별 결정이므로 `icon-maker.config.js` 또는 데이터 전용 `icon-maker.config.json`에 둡니다. 플랫폼별 파일명과 manifest 연결은 도구가 기계적으로 처리합니다.
 - **하지 않기로 한 것** — AI 로고 생성, 브랜딩 전략, 맞춤 일러스트 polish. v1은 starter-layer compiler입니다.
 
 ## 로컬 사용
@@ -72,6 +72,10 @@ module.exports = {
   targets: ['auto'],
 };
 ```
+
+신뢰하지 않는 target checkout에서는 `icon-maker.config.json`을 권장합니다.
+자동 탐지는 JSON 설정을 먼저 읽고, target repo의 `icon-maker.config.js`는
+`--config`로 명시하지 않는 한 자동 실행하지 않습니다.
 
 ## Target
 

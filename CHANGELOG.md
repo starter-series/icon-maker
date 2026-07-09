@@ -10,6 +10,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - Added packed-install smoke coverage so CI verifies the packed tarball inside a
   fresh consumer project through both the CLI and programmatic API.
 - Clarified pre-release local/source-checkout usage before npm publication.
+- Narrowed the public API surface to the documented `makeIcons()` export.
+- Consolidated target mark presets and patch roles into target metadata.
+- Reused same-size raster outputs within one generation run to avoid duplicate
+  PNG work for multi-target and container outputs.
+
+### Fixed
+- Report CLI usage errors, including unknown flags and unknown targets, with
+  the documented exit code `2` and parseable `--json` error output.
 
 ## 0.1.0 - 2026-06-23
 
