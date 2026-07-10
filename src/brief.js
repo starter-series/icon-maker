@@ -202,7 +202,7 @@ Explain what this direction would express and its main tradeoff. Wait for explic
 }
 
 function relativeSourcePath(cwd, sourcePath) {
-  return path.relative(fs.realpathSync(cwd), sourcePath);
+  return path.relative(fs.realpathSync(cwd), sourcePath).split(path.sep).join('/');
 }
 
 function renderSourceReady(cwd, source) {

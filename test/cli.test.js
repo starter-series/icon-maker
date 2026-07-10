@@ -232,7 +232,7 @@ describe('cli args', () => {
     const result = makeDesignBrief({ project: { name: 'Branded App' }, targets: ['pwa'] }, { cwd });
     assert.equal(result.workflow.state, 'needs-direction');
     assert.equal(result.workflow.nextAction, 'review-brand-evidence');
-    assert.deepEqual(result.brandContext.assets, [{ relativePath: path.join('brand', 'logo.svg'), kind: 'logo' }]);
+    assert.deepEqual(result.brandContext.assets, [{ relativePath: 'brand/logo.svg', kind: 'logo' }]);
     assert.match(result.prompt, /Asset \(logo\): brand\/logo\.svg/);
   });
 
@@ -252,7 +252,7 @@ describe('cli args', () => {
     assert.equal(result.imagePrompt, null);
     assert.equal(result.workflow.nextAction, 'compile-preview');
     assert.deepEqual(result.source, {
-      path: path.join('brand', 'icon.svg'),
+      path: 'brand/icon.svg',
       type: 'svg',
       width: undefined,
       height: undefined,

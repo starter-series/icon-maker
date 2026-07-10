@@ -28,8 +28,8 @@ describe('brand context discovery', () => {
 
     const result = discoverBrandContext(cwd);
     assert.equal(result.hasEvidence, true);
-    assert.deepEqual(result.assets.map((item) => item.relativePath), [path.join('brand', 'logo.svg')]);
-    assert.deepEqual(result.documents.map((item) => item.relativePath), [path.join('brand', 'identity.md')]);
+    assert.deepEqual(result.assets.map((item) => item.relativePath), ['brand/logo.svg']);
+    assert.deepEqual(result.documents.map((item) => item.relativePath), ['brand/identity.md']);
     assert.ok(result.colors.some((item) => item.value === '#14b8a6'));
     assert.ok(result.colors.some((item) => item.value === '#0f172a'));
     assert.equal(result.colors.some((item) => item.value === '#ff0000'), false);
@@ -57,7 +57,7 @@ describe('brand context discovery', () => {
     const result = discoverBrandContext(cwd);
     assert.equal(result.hasEvidence, true);
     assert.deepEqual(result.assets, [{
-      relativePath: path.join('App', 'Assets.xcassets', 'AppIcon.appiconset', 'existing-1024.png'),
+      relativePath: 'App/Assets.xcassets/AppIcon.appiconset/existing-1024.png',
       kind: 'icon',
     }]);
   });

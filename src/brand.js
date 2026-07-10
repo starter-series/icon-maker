@@ -27,6 +27,10 @@ function sortEntries(entries) {
   return entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 }
 
+function portablePath(value) {
+  return String(value).split(path.sep).join('/');
+}
+
 function readJson(file) {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -69,7 +73,7 @@ function scanBrandFiles(cwd, maxDepth = 4) {
       }
       if (!entry.isFile()) continue;
       const extension = path.extname(entry.name).toLowerCase();
-      const relativePath = path.relative(cwd, absolutePath);
+      const relativePath = portablePath(path.relative(cwd, absolutePath));
       if (
         assets.length < 24
         && ASSET_EXTENSIONS.has(extension)
@@ -119,7 +123,7 @@ function scanAppleIcons(cwd, assets) {
             continue;
           }
           if (!ASSET_EXTENSIONS.has(extension) || !stat.isFile() || stat.isSymbolicLink()) continue;
-          assets.push({ path: iconPath, relativePath: path.relative(cwd, iconPath), kind: 'icon' });
+          assets.push({ path: iconPath, relativePath: portablePath(path.relative(cwd, iconPath)), kind: 'icon' });
         }
         continue;
       }
@@ -145,7 +149,7 @@ function manifestColors(cwd, colors, seen) {
   ];
   for (const [relativePath, fields] of manifests) {
     const data = readJson(path.join(cwd, relativePath));
-    for (const field of fields) addColor(colors, seen, data?.[field], `${relativePath}:${field}`);
+    for (const field of fields) addColor(colors, seen, data?.[field], `${portablePath(relativePath)}:${field}`);
   }
 
   const app = readJson(path.join(cwd, 'app.json'))?.expo;
@@ -170,7 +174,7 @@ function svgColors(cwd, assets, colors, seen) {
       continue;
     }
     for (const match of text.matchAll(/#[0-9a-fA-F]{3,8}\b/g)) {
-      addColor(colors, seen, match[0], `${path.relative(cwd, asset.path)}:svg`);
+      addColor(colors, seen, match[0], `${portablePath(path.relative(cwd, asset.path))}:svg`);
     }
   }
 }
