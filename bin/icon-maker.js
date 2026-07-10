@@ -9,11 +9,17 @@
 
 const path = require('path');
 const { makeIcons } = require('../src');
+const { makeDesignBrief } = require('../src/brief');
 const { USAGE, parseArgs, initConfig, configStatus } = require('../src/cli');
+const directStdoutWrite = process.stdout.write.bind(process.stdout);
 
 function writeResult(opts, result) {
-  if (opts.json) process.stdout.write(`${JSON.stringify(result)}\n`);
+  if (opts.json) directStdoutWrite(`${JSON.stringify(result)}\n`);
   else if (result.ok) {
+    if (result.kind === 'design-brief') {
+      directStdoutWrite(result.prompt.endsWith('\n') ? result.prompt : `${result.prompt}\n`);
+      return;
+    }
     if (result.configPath && Object.prototype.hasOwnProperty.call(result, 'created')) {
       const verb = result.created ? 'created' : 'exists';
       console.log(`[icon-maker] ${verb}: ${path.relative(result.cwd, result.configPath)}`);
@@ -33,23 +39,13 @@ function writeResult(opts, result) {
   }
 }
 
-function isolateJsonStdout(enabled, fn) {
-  if (!enabled) return fn();
-  const originalWrite = process.stdout.write;
-  process.stdout.write = process.stderr.write.bind(process.stderr);
-  try {
-    return fn();
-  } finally {
-    process.stdout.write = originalWrite;
-  }
-}
-
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help) {
-    process.stdout.write(USAGE);
+    directStdoutWrite(USAGE);
     return;
   }
+  if (opts.json) process.stdout.write = process.stderr.write.bind(process.stderr);
 
   const cwd = path.resolve(process.cwd(), opts.path || '.');
   if (opts.init) {
@@ -58,22 +54,34 @@ async function main() {
     return;
   }
 
-  const result = isolateJsonStdout(opts.json, () => makeIcons(null, {
+  if (opts.brief) {
+    const result = makeDesignBrief(null, {
+      cwd,
+      config: opts.config,
+      targets: opts.targets,
+    });
+    writeResult(opts, result);
+    return;
+  }
+
+  const result = makeIcons(null, {
     cwd,
     config: opts.config,
+    source: opts.source,
+    adaptiveSource: opts.adaptiveSource,
     targets: opts.targets,
     outDir: opts.outDir,
     patch: opts.patch,
     preview: opts.preview,
     write: !opts.dryRun,
-  }));
+  });
   writeResult(opts, result);
 }
 
 main().catch((err) => {
   const msg = err && err.message ? err.message : String(err);
   const code = err && err.exitCode ? err.exitCode : 1;
-  if (process.argv.includes('--json')) process.stdout.write(`${JSON.stringify({ ok: false, error: msg, code })}\n`);
+  if (process.argv.includes('--json')) directStdoutWrite(`${JSON.stringify({ ok: false, error: msg, code })}\n`);
   else console.error('[icon-maker] FAILED:', err && err.stack ? err.stack : err);
   process.exit(code);
 });

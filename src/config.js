@@ -32,15 +32,17 @@ function defaultConfig(cwd = process.cwd(), targets = ['auto']) {
   const pkg = readPackage(cwd);
   const name = titleFromName(pkg.name || path.basename(cwd));
   const resolvedTargets = initTargets(targets);
+  const project = {
+    name,
+    slug: String(pkg.name || path.basename(cwd)).replace(/^@[^/]+\//, ''),
+  };
+  if (pkg.description) project.description = String(pkg.description);
   return {
-    project: {
-      name,
-      slug: String(pkg.name || path.basename(cwd)).replace(/^@[^/]+\//, ''),
-    },
+    project,
     mark: {
       ...markPresetForTargets(resolvedTargets),
       radius: 0.24,
-      // Optional: set source to an SVG file when you have a finished brand mark.
+      // Optional: set source to an SVG/PNG path or a default/adaptiveForeground object.
       // source: './assets/source-icon.svg',
     },
     targets: resolvedTargets,
@@ -48,12 +50,14 @@ function defaultConfig(cwd = process.cwd(), targets = ['auto']) {
 }
 
 function mergeConfig(base, override) {
-  return {
+  const merged = {
     ...base,
     ...override,
     project: { ...base.project, ...override.project },
     mark: { ...base.mark, ...override.mark },
   };
+  if (base.apple || override.apple) merged.apple = { ...base.apple, ...override.apple };
+  return merged;
 }
 
 function resolveConfigPath(explicit, cwd) {
@@ -95,11 +99,13 @@ function loadConfigFile(configPath, autoDiscovered, cwd) {
   return require(configPath);
 }
 
-function loadConfig(cwd, explicit) {
+function loadConfig(cwd, explicit, targets = []) {
   const configPath = resolveConfigPath(explicit, cwd);
-  if (!configPath) return { config: defaultConfig(cwd), configPath: null };
+  const requestedTargets = targets && targets.length ? targets : null;
+  if (!configPath) return { config: defaultConfig(cwd, requestedTargets || ['auto']), configPath: null };
   const loaded = loadConfigFile(configPath, !explicit, cwd);
-  return { config: mergeConfig(defaultConfig(cwd), loaded || {}), configPath };
+  const presetTargets = requestedTargets || loaded?.targets || ['auto'];
+  return { config: mergeConfig(defaultConfig(cwd, presetTargets), loaded || {}), configPath };
 }
 
 function renderDefaultConfig(cwd = process.cwd(), targets = ['auto']) {
@@ -115,9 +121,11 @@ function renderDefaultConfig(cwd = process.cwd(), targets = ['auto']) {
     foreground: ${JSON.stringify(config.mark.foreground)},
     accent: ${JSON.stringify(config.mark.accent)},
     radius: ${JSON.stringify(config.mark.radius)},
-    // Use a finished SVG source instead of the generated mark:
-    // source: './assets/source-icon.svg',
+    // Use finished sources instead of the generated mark:
+    // source: { default: './brand/icon.svg', adaptiveForeground: './brand/icon-adaptive.svg' },
   },
+  // When Xcode routing is ambiguous, select the catalog and App Icon set:
+  // apple: { assetCatalog: './MyApp/Assets.xcassets', appIconSet: 'AppIcon' },
   targets: ${JSON.stringify(config.targets)},
 };
 `;

@@ -34,21 +34,21 @@ function chunk(type, data) {
   return Buffer.concat([length, typeBuffer, data, crc]);
 }
 
-function encodePng(width, height, rgba) {
+function encodeRawPng(width, height, pixels, channels, colorType) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8;
-  ihdr[9] = 6;
+  ihdr[9] = colorType;
   ihdr[10] = 0;
   ihdr[11] = 0;
   ihdr[12] = 0;
 
-  const stride = width * 4;
+  const stride = width * channels;
   const raw = Buffer.alloc((stride + 1) * height);
   for (let y = 0; y < height; y++) {
     raw[y * (stride + 1)] = 0;
-    rgba.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
+    pixels.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
   }
 
   return Buffer.concat([
@@ -57,6 +57,21 @@ function encodePng(width, height, rgba) {
     chunk('IDAT', zlib.deflateSync(raw)),
     chunk('IEND', Buffer.alloc(0)),
   ]);
+}
+
+function encodePng(width, height, rgba) {
+  return encodeRawPng(width, height, rgba, 4, 6);
+}
+
+function encodeRgbPng(width, height, rgba, matte = { r: 255, g: 255, b: 255 }) {
+  const rgb = Buffer.alloc(width * height * 3);
+  for (let source = 0, target = 0; source < rgba.length; source += 4, target += 3) {
+    const alpha = rgba[source + 3] / 255;
+    rgb[target] = Math.round(rgba[source] * alpha + matte.r * (1 - alpha));
+    rgb[target + 1] = Math.round(rgba[source + 1] * alpha + matte.g * (1 - alpha));
+    rgb[target + 2] = Math.round(rgba[source + 2] * alpha + matte.b * (1 - alpha));
+  }
+  return encodeRawPng(width, height, rgb, 3, 2);
 }
 
 function blendPixel(rgba, width, x, y, color) {
@@ -145,14 +160,89 @@ function fillPolygon(rgba, width, height, primitive) {
   }
 }
 
-function rasterizePrimitives(size, primitives) {
+function rasterizePrimitives(size, primitives, options = {}) {
   const rgba = Buffer.alloc(size * size * 4);
   for (const primitive of primitives) {
     if (primitive.type === 'rect') fillRect(rgba, size, size, primitive);
     else if (primitive.type === 'circle') fillCircle(rgba, size, size, primitive);
     else if (primitive.type === 'polygon') fillPolygon(rgba, size, size, primitive);
   }
-  return encodePng(size, size, rgba);
+  return options.rgb ? encodeRgbPng(size, size, rgba) : encodePng(size, size, rgba);
 }
 
-module.exports = { encodePng, rasterizePrimitives, PNG_SIGNATURE };
+function unpremultiplyRgba(rgba) {
+  const output = Buffer.from(rgba);
+  for (let index = 0; index < output.length; index += 4) {
+    const alpha = output[index + 3];
+    if (alpha === 0) {
+      output[index] = 0;
+      output[index + 1] = 0;
+      output[index + 2] = 0;
+    } else if (alpha < 255) {
+      output[index] = Math.min(255, Math.round((output[index] * 255) / alpha));
+      output[index + 1] = Math.min(255, Math.round((output[index + 1] * 255) / alpha));
+      output[index + 2] = Math.min(255, Math.round((output[index + 2] * 255) / alpha));
+    }
+  }
+  return output;
+}
+
+function resizeRgba(sourceWidth, sourceHeight, rgba, targetWidth, targetHeight) {
+  if (sourceWidth === targetWidth && sourceHeight === targetHeight) return Buffer.from(rgba);
+  if (rgba.length !== sourceWidth * sourceHeight * 4) throw new Error('RGBA buffer size does not match its dimensions');
+  const output = Buffer.alloc(targetWidth * targetHeight * 4);
+  const scaleX = sourceWidth / targetWidth;
+  const scaleY = sourceHeight / targetHeight;
+
+  for (let targetY = 0; targetY < targetHeight; targetY++) {
+    const sourceY0 = targetY * scaleY;
+    const sourceY1 = (targetY + 1) * scaleY;
+    const startY = Math.floor(sourceY0);
+    const endY = Math.min(sourceHeight, Math.ceil(sourceY1));
+    for (let targetX = 0; targetX < targetWidth; targetX++) {
+      const sourceX0 = targetX * scaleX;
+      const sourceX1 = (targetX + 1) * scaleX;
+      const startX = Math.floor(sourceX0);
+      const endX = Math.min(sourceWidth, Math.ceil(sourceX1));
+      let alphaWeight = 0;
+      let red = 0;
+      let green = 0;
+      let blue = 0;
+      let area = 0;
+
+      for (let sourceY = startY; sourceY < endY; sourceY++) {
+        const yWeight = Math.min(sourceY1, sourceY + 1) - Math.max(sourceY0, sourceY);
+        for (let sourceX = startX; sourceX < endX; sourceX++) {
+          const xWeight = Math.min(sourceX1, sourceX + 1) - Math.max(sourceX0, sourceX);
+          const weight = xWeight * yWeight;
+          const sourceIndex = (sourceY * sourceWidth + sourceX) * 4;
+          const alpha = rgba[sourceIndex + 3];
+          area += weight;
+          alphaWeight += alpha * weight;
+          red += rgba[sourceIndex] * alpha * weight;
+          green += rgba[sourceIndex + 1] * alpha * weight;
+          blue += rgba[sourceIndex + 2] * alpha * weight;
+        }
+      }
+
+      const targetIndex = (targetY * targetWidth + targetX) * 4;
+      output[targetIndex + 3] = area ? Math.round(alphaWeight / area) : 0;
+      if (alphaWeight) {
+        output[targetIndex] = Math.round(red / alphaWeight);
+        output[targetIndex + 1] = Math.round(green / alphaWeight);
+        output[targetIndex + 2] = Math.round(blue / alphaWeight);
+      }
+    }
+  }
+
+  return output;
+}
+
+module.exports = {
+  encodePng,
+  encodeRgbPng,
+  rasterizePrimitives,
+  resizeRgba,
+  unpremultiplyRgba,
+  PNG_SIGNATURE,
+};

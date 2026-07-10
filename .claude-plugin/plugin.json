@@ -1,7 +1,7 @@
 {
   "name": "icon-maker",
   "version": "0.1.0",
-  "description": "Generate deterministic app, extension, connector, and marketplace icon sets — bundles the create-icons skill that drives the icon-maker CLI.",
+  "description": "Compile provider-neutral SVG/PNG designs into Apple/Xcode, app, extension, connector, and web icon assets.",
   "author": {
     "name": "heznpc",
     "url": "https://github.com/heznpc"
@@ -12,6 +12,8 @@
   "keywords": [
     "icons",
     "app-icon",
+    "apple",
+    "xcode",
     "browser-extension",
     "expo",
     "electron",

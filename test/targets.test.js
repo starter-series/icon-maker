@@ -33,6 +33,12 @@ describe('target detection', () => {
     assert.deepEqual(detectTargets(cwd).sort(), ['electron', 'mcp-connector', 'pwa']);
   });
 
+  test('detects Apple projects from an Xcode asset catalog', () => {
+    const cwd = tempDir();
+    fs.mkdirSync(path.join(cwd, 'Demo', 'Assets.xcassets'), { recursive: true });
+    assert.deepEqual(detectTargets(cwd), ['apple']);
+  });
+
   test('falls back to generic and rejects unknown explicit target', () => {
     const cwd = tempDir();
     assert.deepEqual(detectTargets(cwd), ['generic']);

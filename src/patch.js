@@ -147,11 +147,27 @@ const PATCHERS = {
   pwa: (cwd, produced, _target, _spec, warnings) => patchPwa(cwd, produced, warnings),
 };
 
+function patchInputPath(cwd, _target, spec) {
+  if (spec.type === 'browser-extension') return path.join(cwd, 'manifest.json');
+  if (spec.type === 'expo') return path.join(cwd, 'app.json');
+  if (spec.type === 'package-icon') return path.join(cwd, 'package.json');
+  if (spec.type === 'pwa') return path.join(cwd, 'public', 'manifest.json');
+  return null;
+}
+
 function applyPatches(cwd, targets, produced, warnings) {
   const patches = [];
   for (const target of targets) {
     const spec = TARGETS[target]?.patch;
     const patcher = spec && PATCHERS[spec.type];
+    const input = spec && patchInputPath(cwd, target, spec);
+    if (patcher && input && !fs.existsSync(input)) {
+      warnings.push({
+        code: 'patch-target-missing',
+        message: `--patch requested for ${target}, but ${path.relative(cwd, input)} was not found`,
+      });
+      continue;
+    }
     const patch = patcher ? patcher(cwd, produced, target, spec, warnings) : null;
     if (patch) patches.push(patch);
   }

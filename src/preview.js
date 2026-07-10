@@ -14,14 +14,14 @@ function relativeUrl(fromFile, assetPath) {
 
 function previewCard(previewPath, item) {
   const canRender = item.format === 'png' || item.format === 'svg' || item.format === 'ico';
-  const size = item.sizes ? item.sizes.join(', ') : item.size;
+  const size = item.sizes ? `${item.sizes.join(', ')}px` : item.size ? `${item.size}px` : 'metadata';
   const body = canRender
     ? `<img src="${relativeUrl(previewPath, item.path)}" alt="${escapeHtml(path.basename(item.path))}">`
     : `<div class="file">${escapeHtml(item.format.toUpperCase())}</div>`;
   return `<article class="card">
     <div class="sample">${body}</div>
     <strong>${escapeHtml(path.basename(item.path))}</strong>
-    <span>${escapeHtml(item.target)} · ${escapeHtml(item.format)} · ${escapeHtml(size)}px</span>
+    <span>${escapeHtml(item.target)} · ${escapeHtml(item.format)} · ${escapeHtml(size)}</span>
   </article>`;
 }
 

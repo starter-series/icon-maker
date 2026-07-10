@@ -66,6 +66,16 @@ try {
 
   run('npm', ['install', '--ignore-scripts', tarball], { cwd: consumer });
 
+  const briefResult = run(
+    'npx',
+    ['--yes', 'icon-maker', '--brief', '--target', 'apple,pwa', '--json'],
+    { cwd: consumer },
+  );
+  const briefJson = parseJson(briefResult.stdout, 'icon-maker design brief');
+  assert.equal(briefJson.kind, 'design-brief');
+  assert.deepEqual(briefJson.targets, ['apple', 'pwa']);
+  assert.match(briefJson.prompt, /Xcode/);
+
   const cliResult = run(
     'npx',
     ['--yes', 'icon-maker', '--target', 'generic', '--out-dir', 'out', '--json'],
@@ -85,6 +95,29 @@ try {
       `unexpected output path: ${item.path}`,
     );
   }
+
+  const sourceResult = run(
+    'npx',
+    [
+      '--yes',
+      'icon-maker',
+      '--source',
+      'out/generic/assets/icon.png',
+      '--target',
+      'apple',
+      '--out-dir',
+      'imported',
+      '--json',
+    ],
+    { cwd: consumer },
+  );
+  const sourceJson = parseJson(sourceResult.stdout, 'icon-maker packed source compile');
+  assert.equal(sourceJson.source.type, 'png');
+  const applePng = sourceJson.produced.find((item) => item.target === 'apple' && item.format === 'png' && item.size === 1024);
+  const appleContents = sourceJson.produced.find((item) => item.target === 'apple' && item.format === 'json');
+  assert.ok(applePng && fs.existsSync(applePng.path), 'packed source compile produced no Apple PNG');
+  assert.ok(appleContents && fs.existsSync(appleContents.path), 'packed source compile produced no Contents.json');
+  assert.equal(fs.readFileSync(applePng.path)[25], 2, 'Apple PNG must use RGB color type');
 
   const apiScript = `
 const fs = require('node:fs');

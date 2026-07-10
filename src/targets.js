@@ -1,7 +1,44 @@
 const fs = require('fs');
 const path = require('path');
+const { hasAppleProject } = require('./apple');
+
+const APPLE_APP_ICON_SPECS = [
+  { filename: 'AppIcon-ios-1024.png', pixels: 1024, idiom: 'universal', platform: 'ios', size: '1024x1024' },
+  { filename: 'AppIcon-mac-16.png', pixels: 16, idiom: 'mac', scale: '1x', size: '16x16' },
+  { filename: 'AppIcon-mac-16@2x.png', pixels: 32, idiom: 'mac', scale: '2x', size: '16x16' },
+  { filename: 'AppIcon-mac-32.png', pixels: 32, idiom: 'mac', scale: '1x', size: '32x32' },
+  { filename: 'AppIcon-mac-32@2x.png', pixels: 64, idiom: 'mac', scale: '2x', size: '32x32' },
+  { filename: 'AppIcon-mac-128.png', pixels: 128, idiom: 'mac', scale: '1x', size: '128x128' },
+  { filename: 'AppIcon-mac-128@2x.png', pixels: 256, idiom: 'mac', scale: '2x', size: '128x128' },
+  { filename: 'AppIcon-mac-256.png', pixels: 256, idiom: 'mac', scale: '1x', size: '256x256' },
+  { filename: 'AppIcon-mac-256@2x.png', pixels: 512, idiom: 'mac', scale: '2x', size: '256x256' },
+  { filename: 'AppIcon-mac-512.png', pixels: 512, idiom: 'mac', scale: '1x', size: '512x512' },
+  { filename: 'AppIcon-mac-512@2x.png', pixels: 1024, idiom: 'mac', scale: '2x', size: '512x512' },
+];
+
+const APPLE_APP_ICON_IMAGES = APPLE_APP_ICON_SPECS.map(({ pixels: _pixels, ...image }) => image);
+const APPLE_APP_ICON_FILES = APPLE_APP_ICON_SPECS.map(({ filename, pixels }) => ({
+  path: `Assets.xcassets/AppIcon.appiconset/${filename}`,
+  size: pixels,
+  format: 'png',
+  opaqueBackground: true,
+  mark: { shape: 'square', backgroundInset: 0, radius: 0 },
+}));
+APPLE_APP_ICON_FILES.push({
+  path: 'Assets.xcassets/AppIcon.appiconset/Contents.json',
+  format: 'json',
+  contents: {
+    images: APPLE_APP_ICON_IMAGES,
+    info: { author: 'xcode', version: 1 },
+  },
+});
 
 const TARGETS = {
+  apple: {
+    label: 'Apple app (Xcode)',
+    mark: { glyph: 'spark', shape: 'square', background: '#111827', foreground: '#ffffff', accent: '#38bdf8' },
+    files: APPLE_APP_ICON_FILES,
+  },
   'browser-extension': {
     label: 'Browser extension',
     mark: { glyph: 'braces', shape: 'squircle', background: '#111827', foreground: '#f8fafc', accent: '#38bdf8' },
@@ -86,8 +123,10 @@ function hasPackageDependency(pkg, name) {
   return Boolean(pkg.dependencies?.[name] || pkg.devDependencies?.[name] || pkg.peerDependencies?.[name]);
 }
 
-function detectTargets(cwd) {
+function detectTargets(cwd, discovery = {}) {
   const found = [];
+  if (hasAppleProject(cwd, discovery)) found.push('apple');
+
   const manifest = readJson(path.join(cwd, 'manifest.json'));
   if (manifest?.manifest_version) found.push('browser-extension');
 
@@ -112,9 +151,9 @@ function markPresetForTargets(targets) {
   return TARGETS[firstConcrete]?.mark || TARGETS.generic.mark;
 }
 
-function resolveTargets(requested, cwd, configTargets) {
+function resolveTargets(requested, cwd, configTargets, discovery = {}) {
   const raw = splitTargetList(requested && requested.length ? requested : configTargets || ['auto']);
-  const expanded = raw.includes('auto') ? raw.filter((value) => value !== 'auto').concat(detectTargets(cwd)) : raw;
+  const expanded = raw.includes('auto') ? raw.filter((value) => value !== 'auto').concat(detectTargets(cwd, discovery)) : raw;
   const unique = [...new Set(expanded)];
   const unknown = unique.filter((target) => !TARGETS[target]);
   if (unknown.length) {

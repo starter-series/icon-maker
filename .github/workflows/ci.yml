@@ -74,16 +74,44 @@ jobs:
         if: matrix.node-version == 24
         run: npm run pack:install-smoke
 
+  platform-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Compile Xcode asset catalog
+        if: runner.os == 'macOS'
+        run: npm run xcode:smoke
+
   ci:
-    needs: [static-checks, test]
+    needs: [static-checks, test, platform-test]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Aggregate result
         run: |
           if [ "${{ needs.static-checks.result }}" != "success" ] || \
-             [ "${{ needs.test.result }}" != "success" ]; then
-            echo "::error::CI failed (static-checks=${{ needs.static-checks.result }}, test=${{ needs.test.result }})"
+             [ "${{ needs.test.result }}" != "success" ] || \
+             [ "${{ needs.platform-test.result }}" != "success" ]; then
+            echo "::error::CI failed (static-checks=${{ needs.static-checks.result }}, test=${{ needs.test.result }}, platform-test=${{ needs.platform-test.result }})"
             exit 1
           fi
           echo "All checks passed."

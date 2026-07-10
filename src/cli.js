@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { CONFIG_NAME, renderDefaultConfig, renderDefaultJsonConfig, resolveConfigPath } = require('./config');
 
-const USAGE = `icon-maker — generate deterministic icon sets for launch surfaces
+const USAGE = `icon-maker — compile one icon source for launch surfaces
 
 Usage: icon-maker [path] [options]
 
@@ -10,10 +10,14 @@ Arguments:
   path                repo to run against (default: current directory)
 
 Options:
-  --target <name>     target to generate: auto, browser-extension, expo,
+  --target <name>     target to generate: auto, apple, browser-extension, expo,
                       electron, vscode, pwa, mcp-connector, generic.
                       Repeatable or comma-separated. Default: config targets or auto.
   --config <path>     config file (default: icon-maker.config.json, then .js)
+  --source <path>     compile a self-contained SVG or PNG without editing config
+  --adaptive-source <path>
+                      optional transparent Expo adaptive-icon foreground
+  --brief             print a provider-neutral design prompt instead of compiling
   --out-dir <path>    write generated files under this directory, grouped by target
   --patch             update known manifest/app/package icon fields after writing
   --preview           write icon-preview.html contact sheet next to the outputs
@@ -42,11 +46,14 @@ function parseArgs(argv) {
   const opts = {
     targets: [],
     config: null,
+    source: null,
+    adaptiveSource: null,
     outDir: null,
     patch: false,
     preview: false,
     dryRun: false,
     init: false,
+    brief: false,
     json: false,
     help: false,
     path: null,
@@ -59,6 +66,12 @@ function parseArgs(argv) {
     } else if (arg === '--config') {
       opts.config = readOptionValue(argv, i, arg);
       i++;
+    } else if (arg === '--source') {
+      opts.source = readOptionValue(argv, i, arg);
+      i++;
+    } else if (arg === '--adaptive-source') {
+      opts.adaptiveSource = readOptionValue(argv, i, arg);
+      i++;
     } else if (arg === '--out-dir') {
       opts.outDir = readOptionValue(argv, i, arg);
       i++;
@@ -67,11 +80,20 @@ function parseArgs(argv) {
     else if (arg === '--preview') opts.preview = true;
     else if (arg === '--dry-run') opts.dryRun = true;
     else if (arg === '--init') opts.init = true;
+    else if (arg === '--brief') opts.brief = true;
     else if (arg === '--json') opts.json = true;
     else if (arg === '-h' || arg === '--help') opts.help = true;
     else if (!arg.startsWith('-') && opts.path === null) opts.path = arg;
     else if (arg.startsWith('-')) throw usageError(`Unknown option: ${arg}`);
     else throw usageError(`Unexpected positional argument: ${arg}`);
+  }
+  if (opts.brief && opts.init) throw usageError('--brief cannot be combined with --init');
+  if (opts.brief && opts.source) throw usageError('--brief cannot be combined with --source');
+  if (opts.brief && opts.adaptiveSource) throw usageError('--brief cannot be combined with --adaptive-source');
+  if (opts.init && opts.source) throw usageError('--init cannot be combined with --source');
+  if (opts.init && opts.adaptiveSource) throw usageError('--init cannot be combined with --adaptive-source');
+  if (opts.brief && (opts.patch || opts.preview || opts.dryRun || opts.outDir)) {
+    throw usageError('--brief cannot be combined with compile output options');
   }
   return opts;
 }

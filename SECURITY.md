@@ -25,3 +25,17 @@ run. To avoid this, `icon-maker` refuses to auto-execute a `.js` config that is
 discovered inside a target directory other than your own working directory;
 prefer `icon-maker.config.json` when running against untrusted checkouts, or
 pass `--config` explicitly to opt in to a specific `.js` file.
+
+`--source` and configured SVG/PNG sources must resolve inside the target
+directory. SVG outputs preserve a trusted source after optional removal of one
+exact Markdown code fence, so an SVG containing scripts or event-handler
+attributes can remain active when opened or served in a browser. Only compile
+SVG files you authored or trust. Apple catalog output is also restricted to
+the target directory; when multiple `.xcassets` directories exist, select one
+explicitly with `apple.assetCatalog`.
+
+Generated output paths are resolved before rendering and must remain inside the
+target checkout after following existing symlinks. A generated file may not
+overwrite its own SVG/PNG source. Existing Xcode App Icon sets that reference
+files not owned by icon-maker are treated as externally managed and are not
+replaced; select a new `apple.appIconSet` instead.
