@@ -57,6 +57,7 @@ function mergeConfig(base, override) {
     project: { ...base.project, ...override.project },
     mark: { ...base.mark, ...override.mark },
   };
+  if (base.design || override.design) merged.design = { ...base.design, ...override.design };
   if (base.apple || override.apple) merged.apple = { ...base.apple, ...override.apple };
   return merged;
 }
@@ -115,6 +116,19 @@ function renderDefaultConfig(cwd = process.cwd(), targets = ['auto']) {
   project: ${JSON.stringify(config.project, null, 2).replace(/\n/g, '\n  ')},
   // Set true only when deterministic temporary artwork is intentional:
   placeholder: false,
+  // Design intent is reviewed before any image model is called:
+  // design: {
+  //   name: 'Focused signal',
+  //   concept: 'what the icon should express',
+  //   expresses: 'calm confidence under pressure',
+  //   metaphor: 'one clear signal emerging from noise',
+  //   mood: ['precise', 'quiet'],
+  //   tradeoff: 'less literal, more recognizable at small sizes',
+  //   palette: ['#0f172a', '#14b8a6'],
+  //   avoid: ['literal platform logos'],
+  //   references: ['./brand/logo.svg'],
+  //   approved: false,
+  // },
   mark: {
     // glyph: 'braces' | 'spark' | 'bolt'
     glyph: ${JSON.stringify(config.mark.glyph)},

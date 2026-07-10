@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { initConfig, parseArgs } = require('../src/cli');
-const { makeDesignBrief } = require('../src/brief');
+const { makeDesignBrief, renderDesignBrief } = require('../src/brief');
 
 function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'icon-maker-cli-'));
@@ -28,9 +28,24 @@ describe('cli args', () => {
   });
 
   test('parses provider-neutral brief and direct source options', () => {
-    const brief = parseArgs(['--brief', '--target', 'apple,pwa', '--json']);
+    const brief = parseArgs([
+      '--brief', '--target', 'apple,pwa', '--direction-name', 'Focused signal',
+      '--concept', 'a focused signal', '--expresses', 'calm confidence',
+      '--visual-metaphor', 'one signal emerging from noise', '--mood', 'precise,quiet',
+      '--tradeoff', 'less literal', '--palette', '#0f172a,#14b8a6',
+      '--avoid', 'letters,platform logos', '--approve-direction', '--json',
+    ]);
     assert.equal(brief.brief, true);
     assert.deepEqual(brief.targets, ['apple', 'pwa']);
+    assert.equal(brief.directionName, 'Focused signal');
+    assert.equal(brief.concept, 'a focused signal');
+    assert.equal(brief.expresses, 'calm confidence');
+    assert.equal(brief.visualMetaphor, 'one signal emerging from noise');
+    assert.equal(brief.mood, 'precise,quiet');
+    assert.equal(brief.tradeoff, 'less literal');
+    assert.equal(brief.palette, '#0f172a,#14b8a6');
+    assert.equal(brief.avoid, 'letters,platform logos');
+    assert.equal(brief.approveDirection, true);
 
     const compile = parseArgs([
       '--source', './brand/icon.png',
@@ -53,9 +68,11 @@ describe('cli args', () => {
     assert.throws(() => parseArgs(['--init', '--source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });
     assert.throws(() => parseArgs(['--placeholder', '--source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });
     assert.throws(() => parseArgs(['--brief', '--placeholder']), { exitCode: 2, message: /cannot be combined/ });
+    assert.throws(() => parseArgs(['--concept', 'a signal']), { exitCode: 2, message: /require --brief/ });
+    assert.throws(() => parseArgs(['--approve-direction']), { exitCode: 2, message: /require --brief/ });
   });
 
-  test('prints an image-generation source request without writing files', () => {
+  test('stops at needs-direction without writing files', () => {
     const cwd = tempDir();
     const bin = path.resolve(__dirname, '..', 'bin', 'icon-maker.js');
     const result = spawnSync(process.execPath, [bin, cwd, '--brief', '--target', 'apple,pwa', '--json'], {
@@ -64,16 +81,81 @@ describe('cli args', () => {
     const parsed = JSON.parse(result.stdout);
     assert.equal(result.status, 0);
     assert.equal(parsed.kind, 'source-request');
+    assert.equal(parsed.schemaVersion, 2);
+    assert.equal(parsed.requestType, 'direction-discovery');
+    assert.equal(parsed.imagePrompt, null);
     assert.deepEqual(parsed.targets, ['apple', 'pwa']);
     assert.equal(parsed.sourceContract.preferred, 'png');
     assert.deepEqual(parsed.sourceContract.accepted, ['png', 'svg']);
-    assert.equal(parsed.workflow.nextAction, 'generate-image');
+    assert.deepEqual(parsed.technicalConstraints.map((item) => item.target), ['apple', 'pwa']);
+    assert.ok(parsed.technicalConstraints[0].outputs.some((item) => item.size === 1024));
+    assert.equal(parsed.workflow.state, 'needs-direction');
+    assert.equal(parsed.workflow.nextAction, 'collect-direction');
+    assert.equal(parsed.workflow.imageGenerationAllowed, false);
+    assert.equal(parsed.workflow.uncertainUserPath.count, 3);
+    assert.equal(parsed.workflow.uncertainUserPath.format, 'text-only');
+    assert.ok(parsed.workflow.uncertainUserPath.eachMustInclude.includes('what-it-expresses'));
     assert.equal(parsed.workflow.approvalRequired, true);
     assert.equal(parsed.workflow.noFallbackSvgSynthesis, true);
     assert.match(parsed.prompt, /Xcode/);
-    assert.match(parsed.prompt, /image-generation model/);
+    assert.match(parsed.prompt, /Image generation is blocked/);
+    assert.match(parsed.prompt, /exactly three text-only exploratory directions/);
     assert.doesNotMatch(parsed.prompt, /exactly one SVG code block/);
     assert.deepEqual(fs.readdirSync(cwd), []);
+  });
+
+  test('reviews a complete direction before image generation', () => {
+    const cwd = tempDir();
+    const bin = path.resolve(__dirname, '..', 'bin', 'icon-maker.js');
+    const result = spawnSync(
+      process.execPath,
+      [bin, cwd, '--brief', '--concept', 'a focused signal', '--mood', 'precise,quiet', '--json'],
+      { encoding: 'utf8' },
+    );
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(result.status, 0);
+    assert.equal(parsed.workflow.state, 'needs-direction-approval');
+    assert.equal(parsed.requestType, 'direction-review');
+    assert.equal(parsed.imagePrompt, null);
+    assert.equal(parsed.workflow.nextAction, 'review-direction');
+    assert.equal(parsed.workflow.imageGenerationAllowed, false);
+    assert.match(parsed.prompt, /direction is complete enough to review, but it is not approved/);
+  });
+
+  test('prints an image-generation brief only for an approved direction', () => {
+    const cwd = tempDir();
+    const bin = path.resolve(__dirname, '..', 'bin', 'icon-maker.js');
+    const result = spawnSync(
+      process.execPath,
+      [
+        bin, cwd, '--brief', '--target', 'apple,pwa',
+        '--concept', 'a focused signal', '--mood', 'precise,quiet',
+        '--palette', '#0f172a,#14b8a6', '--approve-direction', '--json',
+      ],
+      { encoding: 'utf8' },
+    );
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(result.status, 0);
+    assert.equal(parsed.workflow.state, 'ready-for-image-generation');
+    assert.equal(parsed.requestType, 'image-generation');
+    assert.equal(parsed.imagePrompt, parsed.prompt);
+    assert.equal(parsed.workflow.nextAction, 'generate-image');
+    assert.equal(parsed.workflow.imageGenerationAllowed, true);
+    assert.match(parsed.prompt, /Approved direction for this candidate/);
+    assert.match(parsed.prompt, /a focused signal/);
+    assert.match(parsed.prompt, /image-generation model/);
+  });
+
+  test('does not render an image-generation prompt through the low-level helper without approval', () => {
+    assert.throws(
+      () => renderDesignBrief(
+        { project: { name: 'Blocked App' } },
+        ['generic'],
+        { concept: 'a signal', mood: ['quiet'], approved: false },
+        { assets: [], documents: [], colors: [], hasEvidence: false },
+      ),
+      /explicitly approved direction/,
+    );
   });
 
   test('only includes Apple-specific design rules when Apple is targeted', () => {
@@ -103,7 +185,23 @@ describe('cli args', () => {
     assert.match(parsed.prompt, /quiet focus timer for remote teams/);
   });
 
-  test('requests separate finished image assets for Expo', () => {
+  test('keeps partial direction input visible while asking for missing fields', () => {
+    const cwd = tempDir();
+    const bin = path.resolve(__dirname, '..', 'bin', 'icon-maker.js');
+    const result = spawnSync(
+      process.execPath,
+      [bin, cwd, '--brief', '--concept', 'a focused signal', '--json'],
+      { encoding: 'utf8' },
+    );
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(result.status, 0);
+    assert.equal(parsed.workflow.state, 'needs-direction');
+    assert.deepEqual(parsed.workflow.missingDirection, ['mood']);
+    assert.match(parsed.prompt, /Known direction \(unapproved\)/);
+    assert.match(parsed.prompt, /Concept: a focused signal/);
+  });
+
+  test('reports Expo source constraints before a direction exists', () => {
     const cwd = tempDir();
     const bin = path.resolve(__dirname, '..', 'bin', 'icon-maker.js');
     const result = spawnSync(process.execPath, [bin, cwd, '--brief', '--target', 'expo', '--json'], {
@@ -112,15 +210,54 @@ describe('cli args', () => {
     const parsed = JSON.parse(result.stdout);
     assert.equal(result.status, 0);
     assert.deepEqual(parsed.sourceContract.variants, ['default', 'adaptiveForeground']);
-    assert.match(parsed.prompt, /two clearly named finished image files/);
-    assert.match(parsed.prompt, /transparent PNG/);
+    assert.equal(parsed.workflow.state, 'needs-direction');
+    assert.match(parsed.prompt, /Android adaptive-icon foreground/);
+    assert.doesNotMatch(parsed.prompt, /two clearly named finished image files/);
   });
 
   test('uses input config targets for programmatic source requests', () => {
     const cwd = tempDir();
     const result = makeDesignBrief({ project: { name: 'Expo App' }, targets: ['expo'] }, { cwd });
     assert.deepEqual(result.targets, ['expo']);
-    assert.equal(result.workflow.nextAction, 'generate-image');
+    assert.equal(result.workflow.nextAction, 'collect-direction');
+  });
+
+  test('reviews discovered brand evidence before collecting a new direction', () => {
+    const cwd = tempDir();
+    fs.mkdirSync(path.join(cwd, 'brand'));
+    fs.writeFileSync(
+      path.join(cwd, 'brand', 'logo.svg'),
+      '<svg xmlns="http://www.w3.org/2000/svg"><path fill="#14b8a6"/></svg>',
+    );
+    const result = makeDesignBrief({ project: { name: 'Branded App' }, targets: ['pwa'] }, { cwd });
+    assert.equal(result.workflow.state, 'needs-direction');
+    assert.equal(result.workflow.nextAction, 'review-brand-evidence');
+    assert.deepEqual(result.brandContext.assets, [{ relativePath: path.join('brand', 'logo.svg'), kind: 'logo' }]);
+    assert.match(result.prompt, /Asset \(logo\): brand\/logo\.svg/);
+  });
+
+  test('skips image generation when config already names an approved source', () => {
+    const cwd = tempDir();
+    fs.mkdirSync(path.join(cwd, 'brand'));
+    fs.writeFileSync(
+      path.join(cwd, 'brand', 'icon.svg'),
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64"/></svg>',
+    );
+    const result = makeDesignBrief(
+      { project: { name: 'Ready App' }, mark: { source: './brand/icon.svg' }, targets: ['pwa'] },
+      { cwd },
+    );
+    assert.equal(result.workflow.state, 'ready-to-compile');
+    assert.equal(result.requestType, 'compile');
+    assert.equal(result.imagePrompt, null);
+    assert.equal(result.workflow.nextAction, 'compile-preview');
+    assert.deepEqual(result.source, {
+      path: path.join('brand', 'icon.svg'),
+      type: 'svg',
+      width: undefined,
+      height: undefined,
+    });
+    assert.match(result.prompt, /Image generation is not needed/);
   });
 
   test('passes a direct source through the CLI without a config file', () => {
@@ -168,6 +305,16 @@ describe('cli args', () => {
     assert.equal(result.status, 2);
     assert.equal(result.stderr, '');
     assert.deepEqual(JSON.parse(result.stdout), { ok: false, error: 'Unknown option: --unknown', code: 2 });
+  });
+
+  test('--help --json preserves the one-object stdout contract', () => {
+    const bin = path.resolve(__dirname, '..', 'bin', 'icon-maker.js');
+    const result = spawnSync(process.execPath, [bin, '--help', '--json'], { encoding: 'utf8' });
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout.trim().split('\n').length, 1);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.kind, 'help');
+    assert.match(parsed.usage, /--approve-direction/);
   });
 
   test('prints unknown target as JSON usage error', () => {

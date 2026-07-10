@@ -42,7 +42,8 @@ function writeResult(opts, result) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help) {
-    directStdoutWrite(USAGE);
+    if (opts.json) directStdoutWrite(`${JSON.stringify({ ok: true, kind: 'help', usage: USAGE })}\n`);
+    else directStdoutWrite(USAGE);
     return;
   }
   if (opts.json) process.stdout.write = process.stderr.write.bind(process.stderr);
@@ -59,6 +60,17 @@ async function main() {
       cwd,
       config: opts.config,
       targets: opts.targets,
+      direction: {
+        name: opts.directionName,
+        concept: opts.concept,
+        expresses: opts.expresses,
+        metaphor: opts.visualMetaphor,
+        mood: opts.mood,
+        tradeoff: opts.tradeoff,
+        palette: opts.palette,
+        avoid: opts.avoid,
+        approved: opts.approveDirection ? true : undefined,
+      },
     });
     writeResult(opts, result);
     return;

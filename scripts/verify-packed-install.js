@@ -53,6 +53,11 @@ try {
     `module.exports = {
   placeholder: true,
   project: { name: 'Pack Smoke', slug: 'pack-smoke' },
+  design: {
+    concept: 'one source becoming exact platform delivery assets',
+    mood: ['precise', 'quiet'],
+    approved: true
+  },
   mark: {
     glyph: 'spark',
     shape: 'squircle',
@@ -74,6 +79,9 @@ try {
   );
   const briefJson = parseJson(briefResult.stdout, 'icon-maker design brief');
   assert.equal(briefJson.kind, 'source-request');
+  assert.equal(briefJson.schemaVersion, 2);
+  assert.equal(briefJson.requestType, 'image-generation');
+  assert.equal(briefJson.imagePrompt, briefJson.prompt);
   assert.deepEqual(briefJson.targets, ['apple', 'pwa']);
   assert.equal(briefJson.workflow.nextAction, 'generate-image');
   assert.equal(briefJson.workflow.approvalRequired, true);

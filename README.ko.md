@@ -26,7 +26,8 @@ Xcode Asset Catalog · 앱 아이콘 · 확장 manifest · package 아이콘 · 
   `iconkit`은 npm에 publish되지 않았습니다. 아래 명령은
   로컬 개발 경로와 npm 릴리즈 이후 설치 경로를 분리합니다.
 - **현재 구현됨** — 특정 디자인 공급자에 종속되지 않는 배포용 아이콘
-  컴파일러입니다. 구조화된 이미지 생성/source 요청, 명시적 승인 단계,
+  컴파일러입니다. 구조화된 디자인 의도/source workflow, target 제약,
+  제한된 로컬 brand 근거 탐색, 분리된 방향 및 artwork 승인 단계,
   SVG/PNG 직접 전달, Xcode용 Apple AppIcon catalog, `apple`,
   `browser-extension`, `expo`, `electron`,
   `vscode`, `pwa`, `mcp-connector`, `generic` target, ICO/ICNS, preview,
@@ -47,9 +48,10 @@ node bin/icon-maker.js --placeholder --target generic --out-dir .tmp-icon-previe
 rm -rf .tmp-icon-preview
 ```
 
-brief 명령은 파일을 쓰지 않고 상류 이미지 생성/source 요청을 출력합니다.
-나머지 명령은 임시 artwork임을 `--placeholder`로 명시한 뒤 target detection,
-preview, JSON contract를 검증합니다.
+brief 명령은 파일을 쓰지 않고 target 제약과 기존 로컬 brand 근거를 출력합니다.
+방향과 승인이 명확해질 때까지 이미지 생성을 허용하지 않습니다. 나머지 명령은
+임시 artwork임을 `--placeholder`로 명시한 뒤 target detection, preview, JSON
+contract를 검증합니다.
 
 ## npm 릴리즈 이후
 
@@ -60,18 +62,67 @@ npx iconkit --source ./brand/icon.png --target auto --json
 
 ## 설정
 
-### 이미지 생성 모델에서 source 받기
+### 디자인 의도와 이미지 생성 전달
 
-먼저 상류 이미지 모델이나 디자인 공급자에 전달할 구조화된 요청을 생성합니다.
+먼저 machine-readable source 요청을 생성합니다.
 
 ```bash
-node bin/icon-maker.js --brief --target apple,browser-extension,pwa
+node bin/icon-maker.js --brief --target apple,browser-extension,pwa --json
 ```
 
-에이전트 환경에서는 create-icons skill이 사용 가능한 이미지 생성 도구에 이
-요청을 전달하고, 후보 이미지를 보여준 뒤 명시적 승인을 기다립니다. CLI 자체는
-오프라인이며 모델을 호출하지 않습니다. 승인된 PNG를 프로젝트 안에서 바로
-컴파일합니다.
+`--brief`는 먼저 선택한 target의 기술 제약을 해석하고 기존 brand asset,
+guidance 문서, palette 근거를 프로젝트 안에서 제한적으로 탐색합니다. 발견한
+근거는 검토 대상일 뿐 승인된 brand 의도가 아닙니다. 승인된 source가
+`mark.source`에 이미 설정되어 있으면 workflow는 `ready-to-compile`을 반환하고
+이미지 생성을 건너뜁니다.
+
+`--brief --json`은 `schemaVersion: 2`를 반환합니다. `requestType`은 workflow에
+따라 `direction-discovery`(`needs-direction`),
+`direction-review`(`needs-direction-approval`),
+`image-generation`(`ready-for-image-generation`),
+`compile`(`ready-to-compile`) 중 하나입니다.
+
+source를 새로 받아야 할 때는 반환된 workflow를 그대로 따릅니다.
+
+- `needs-direction`은 concept 또는 mood가 빠져 있고
+  `imageGenerationAllowed`가 `false`인 상태입니다. 이 prompt를 이미지 모델에
+  전달하면 안 됩니다. 사용자가 확신하지 못하면 이름, 표현하는 바, 시각적 비유,
+  분위기, tradeoff를 각각 포함한 정확히 3개의 텍스트 전용 가설을 제시하고
+  결정을 기다립니다. 의미는 제품 맥락과 사용자가 확인한 brand 근거에서 잡고,
+  기술 제약은 배포 가능성 판단에만 사용하며 디자인 의도로 추론하지 않습니다.
+- `needs-direction-approval`은 concept와 mood가 완성되었지만 승인되지 않은
+  상태입니다. 방향을 보여주고 명시적인 승인이나 수정을 기다립니다.
+- 선택한 가설의 전체 필드와 `--approve-direction`으로 다시 실행하거나, 같은
+  완성된 방향을 config의 `design.approved: true`와 함께 저장합니다.
+  `ready-for-image-generation`, `nextAction: "generate-image"`,
+  `imageGenerationAllowed: true`가 모두 확인된 경우에만 non-null
+  `imagePrompt`가 제공됩니다. 이미지 모델에는 그 필드만 전달합니다.
+
+선택한 가설은 요약하거나 필드를 버리지 않고 왕복합니다. `name`은
+`--direction-name`, `metaphor`는 `--visual-metaphor`로 전달하고, 나머지는
+`--concept`, `--expresses`, `--mood`, `--tradeoff`를 사용합니다. 필요하면
+`--palette`, `--avoid`도 함께 전달합니다. 부분 입력도 반환된 `direction`에
+보존되므로 다음 실행에 전체 결과를 다시 전달하거나 config에 저장합니다.
+`direction-review` 왕복에서는 `--approve-direction`을 빼고, 명시적 승인 뒤 같은
+전체 payload에 이 flag를 추가해 다시 실행합니다. 아래는 승인 후 명령입니다.
+
+```bash
+node bin/icon-maker.js --brief \
+  --target apple,browser-extension,pwa \
+  --direction-name "Focused signal" \
+  --concept "clarity emerging from noisy inputs" \
+  --expresses "calm confidence" \
+  --visual-metaphor "one bright signal aligned through a field" \
+  --mood "precise,quiet" \
+  --tradeoff "abstract rather than literal" \
+  --palette "#0f172a,#14b8a6" \
+  --avoid "letters,platform logos" \
+  --approve-direction --json
+```
+
+CLI 자체는 오프라인이며 모델을 호출하지 않습니다. 에이전트는 생성된 후보를
+보여주고 별도의 artwork 승인을 기다립니다. 그 승인을 받은 뒤에만 공급자 출력을
+프로젝트 안에 두고 preview와 함께 컴파일합니다.
 
 ```bash
 node bin/icon-maker.js --source ./brand/icon.png \
@@ -118,6 +169,18 @@ module.exports = {
     description: '제품이 누구를 위해 어떤 일을 하는지',
   },
   placeholder: false,
+  // 승인된 source가 아직 없을 때 --brief에서 사용:
+  // design: {
+  //   name: 'Focused signal',
+  //   concept: 'clarity emerging from noisy inputs',
+  //   expresses: 'calm confidence',
+  //   metaphor: 'one bright signal aligned through a field',
+  //   mood: ['precise', 'quiet'],
+  //   tradeoff: 'abstract rather than literal',
+  //   palette: ['#0f172a', '#14b8a6'],
+  //   avoid: ['letters', 'platform logos'],
+  //   approved: false,
+  // },
   mark: {
     source: {
       default: './brand/icon.png',
@@ -138,6 +201,12 @@ module.exports = {
 starter용 임시 artwork는 `placeholder: true`를 명시한 뒤 `mark.glyph`,
 `shape`, 색상을 설정합니다. `mark.source`가 없다는 이유만으로 placeholder
 mode가 자동 선택되지는 않습니다.
+
+config 방향은 `concept`, 하나 이상의 `mood`, `design.approved: true`가 모두
+있을 때만 이미지 생성 전달을 허용합니다. 사용자가 방향을 승인하기 전에는
+`approved`를 `false`로 유지합니다. 나머지 가설 필드는 `design.name`,
+`expresses`, `metaphor`, `tradeoff`, `palette`, `avoid`에 그대로 보존됩니다.
+설정된 승인 source가 있으면 이를 우선하며 이미지 생성을 건너뜁니다.
 
 신뢰하지 않는 target checkout에서는 `icon-maker.config.json`을 권장합니다.
 자동 탐지는 JSON 설정을 먼저 읽고, target repo의 `icon-maker.config.js`는
@@ -211,9 +280,9 @@ module.exports = {
 - Skill: [`skills/create-icons/SKILL.md`](skills/create-icons/SKILL.md)
 - Source plugin metadata: [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json)
 
-v1에는 MCP 서버를 넣지 않았습니다. 오프라인 JSON CLI와, 사용 가능한 이미지
-공급자에서 후보를 받은 뒤 승인 이후에만 컴파일러를 호출하는 skill 조합을
-사용합니다.
+v1에는 MCP 서버를 넣지 않았습니다. 오프라인 JSON CLI와, 방향을 수집·승인한 뒤
+생성 후보를 별도의 artwork 승인 대상으로 보여주고 그 이후에만 컴파일러를
+호출하는 skill 조합을 사용합니다.
 
 ## 개발
 

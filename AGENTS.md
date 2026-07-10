@@ -32,21 +32,62 @@ runtime failure, `2` usage/init conflict.
 ## Agent source acquisition
 
 - If an approved project-local SVG/PNG already exists, skip image generation
-  and compile that source.
-- If no source exists and the user explicitly asks to create or acquire a
-  design, run `--brief --json`, pass its prompt and source contract to an
-  available image-generation model, and present the resulting image for review.
+  and compile that source. A configured `mark.source` makes `--brief` return
+  `workflow.state: "ready-to-compile"`.
+- Otherwise run `--brief --json` first. It resolves technical target constraints
+  and performs a bounded local scan for brand assets, guidance documents, and
+  palette evidence. Treat discovered evidence as evidence, not approved intent.
+- Every brief JSON uses `schemaVersion: 2`. Its `requestType` is
+  `direction-discovery`, `direction-review`, `image-generation`, or `compile`,
+  matching the four workflow states below.
+- When `workflow.state` is `needs-direction`, concept or mood is missing and
+  `requestType` is `direction-discovery`; `imageGenerationAllowed` is `false`.
+  Never pass that prompt to an image model.
+- If the user is unsure, present exactly three text-only hypotheses. Each must
+  include a name, what it expresses, visual metaphor, mood, and tradeoff. Label
+  them as hypotheses and wait for the user to select, combine, revise, or reject.
+  Ground meaning in product context and user-confirmed brand evidence; use
+  technical constraints only to check feasibility, never to invent intent.
+- Round-trip the selected hypothesis unchanged with `--direction-name`,
+  `--concept`, `--expresses`, `--visual-metaphor`, `--mood`, and `--tradeoff`,
+  plus optional `--palette` / `--avoid`. Partial input remains in the returned
+  `direction` and must be carried into the next run or persisted in config.
+- A complete but unapproved direction returns `needs-direction-approval` with
+  `requestType: "direction-review"`. Present it and wait; direction approval is
+  not artwork approval.
+- Approve by rerunning the full direction with `--approve-direction`, or rerun
+  from config whose `design` preserves `name`, `concept`, `expresses`,
+  `metaphor`, `mood`, `tradeoff`, optional `palette` / `avoid`, and
+  `approved: true`.
+- Invoke an image model only for `ready-for-image-generation` /
+  `generate-image`, `requestType: "image-generation"`, and
+  `imageGenerationAllowed: true`. Pass `imagePrompt`; it is `null` in every
+  other state.
+- Show the generated candidate and wait for explicit artwork approval before
+  placing it in the target checkout, compiling with `--preview`, or patching.
 - Never hand-author SVG primitives, canvas code, or CSS art as a fallback for
-  unavailable image generation. Return the source request and wait for an
+  unavailable image generation. Return the gated source request and wait for an
   approved asset instead.
-- Do not compile, patch, or treat generated artwork as project intent until the
-  user explicitly approves it. After approval, materialize the PNG/SVG inside
-  the target checkout, compile with `--preview`, then patch in a separate step.
 - Use a provider's local output path when one exists. If it returns only a
   conversation image, wait for the approved image to be attached/exported;
   never recreate it with SVG primitives or a screenshot.
 - `--placeholder` is only for an explicitly requested deterministic temporary
   mark. It is not a substitute for image generation or approved artwork.
+
+Approved direction round-trip example:
+
+```bash
+node bin/icon-maker.js --brief --target apple,pwa \
+  --direction-name "Focused signal" \
+  --concept "clarity emerging from noisy inputs" \
+  --expresses "calm confidence" \
+  --visual-metaphor "one bright signal aligned through a field" \
+  --mood precise,quiet \
+  --tradeoff "abstract rather than literal" \
+  --palette "#0f172a,#14b8a6" \
+  --avoid "letters,platform logos" \
+  --approve-direction --json
+```
 
 ## Structure
 
@@ -55,6 +96,7 @@ src/
   generate.js  -> makeIcons(config, opts): target resolution, SVG/PNG/ICO/ICNS writes, optional patches/preview
   targets.js   -> target definitions and repo autodetection
   apple.js     -> Xcode project/catalog discovery and safe Apple output routing
+  brand.js     -> bounded local brand-asset, guidance, and palette evidence discovery
   brief.js     -> image-generation/source request for upstream provider handoff
   workflow.js  -> source acquisition, image-generation handoff, approval and placeholder policy
   mark.js      -> deterministic vector primitive construction
@@ -76,8 +118,10 @@ skills/create-icons/ -> Agent skill wrapping the CLI
 - Keep runtime dependencies scarce and explicit. `@resvg/resvg-js` exists only
   so custom SVG/PNG source files can become platform assets.
 - Design providers are optional upstream inputs. The CLI never calls them or
-  requires network access. Agent workflows may invoke an available image model
-  before compilation, but must keep approval and source handoff explicit.
+  requires network access; the `--brief` evidence scan also remains local.
+  Agent workflows may invoke an image model only after the explicit direction
+  gate, and must keep direction approval, artwork approval, and source handoff
+  distinct.
 - Missing source is an error by default. Built-in deterministic artwork is
   available only through explicit `--placeholder` intent.
 - Never synthesize hand-authored SVG as a fallback for an unavailable image

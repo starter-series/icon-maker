@@ -26,7 +26,8 @@ Xcode Asset Catalog · app icons · extension manifests · package icons · PWA 
   to npm yet. The commands below distinguish local development from post-npm
   release install paths.
 - **Currently implemented** — a provider-neutral delivery icon compiler with a
-  structured image-generation/source request, an explicit approval gate,
+  structured design-intent/source workflow, target constraints, bounded local
+  brand-evidence discovery, separate direction and artwork approval gates,
   direct SVG/PNG handoff, Xcode-ready Apple AppIcon catalogs, and outputs for
   `apple`, `browser-extension`, `expo`,
   `electron`, `vscode`, `pwa`, `mcp-connector`, and `generic`; `.ico` / `.icns`
@@ -49,10 +50,10 @@ node bin/icon-maker.js --placeholder --target generic --out-dir .tmp-icon-previe
 rm -rf .tmp-icon-preview
 ```
 
-The brief command prints an upstream image-generation/source request without
-writing files. The other commands explicitly opt into temporary placeholder
-artwork to test target detection, preview rendering, and the JSON contract
-without pretending that generated primitives are approved design.
+The brief command reports target constraints and existing local brand evidence
+without writing files. It does not authorize image generation until direction
+and approval are explicit. The other commands opt into temporary placeholder
+artwork to test target detection, preview rendering, and the JSON contract.
 
 ## After npm Release
 
@@ -77,18 +78,67 @@ Claude Code plugin path after the public plugin entry exists:
 
 ## Usage
 
-### Image-generation handoff
+### Design-intent and image-generation handoff
 
-Generate a structured request for an upstream image model or design provider:
+Start with a machine-readable source request:
 
 ```bash
-node bin/icon-maker.js --brief --target apple,browser-extension,pwa
+node bin/icon-maker.js --brief --target apple,browser-extension,pwa --json
 ```
 
-In an agent session, the create-icons skill passes this prompt to an available
-image-generation tool, presents the candidate, and waits for explicit approval.
-The CLI itself remains offline and never calls a model. After approval, compile
-the project-local PNG without creating a config file:
+`--brief` first resolves technical constraints for the selected targets and
+performs a bounded local scan for existing brand assets, guidance documents,
+and palette evidence. Discovered evidence must be reviewed; it is not approved
+brand intent. If an approved source is already configured in `mark.source`, the
+workflow returns `ready-to-compile` and skips image generation.
+
+`--brief --json` returns `schemaVersion: 2`. Its `requestType` maps the workflow
+to `direction-discovery` (`needs-direction`), `direction-review`
+(`needs-direction-approval`), `image-generation`
+(`ready-for-image-generation`), or `compile` (`ready-to-compile`).
+
+For source acquisition, follow the returned workflow exactly:
+
+- `needs-direction` means concept or mood is missing and
+  `imageGenerationAllowed` is `false`. Never pass this prompt to an image model.
+  If the user is unsure, present exactly three text-only hypotheses, each with a
+  name, what it expresses, visual metaphor, mood, and tradeoff, then wait.
+  Product context and user-confirmed brand evidence ground their meaning;
+  technical constraints only determine whether a direction can ship.
+- `needs-direction-approval` means concept and mood are complete but not
+  approved. Present the direction and wait for explicit approval or revision.
+- Rerun with the selected hypothesis fields and `--approve-direction`, or store
+  the same complete direction with `design.approved: true` in config. Only
+  `ready-for-image-generation` with `nextAction: "generate-image"` and
+  `imageGenerationAllowed: true` exposes a non-null `imagePrompt`; pass only
+  that field to an image model.
+
+Round-trip a selected hypothesis without summarizing or dropping fields:
+`name` becomes `--direction-name`, `metaphor` becomes `--visual-metaphor`, and
+the remaining fields use `--concept`, `--expresses`, `--mood`, and `--tradeoff`,
+plus optional `--palette` and `--avoid`. Partial input is preserved in the
+returned `direction`; carry the full result forward on the next run or persist
+it in config. Omit `--approve-direction` for the `direction-review` round trip;
+after explicit approval, rerun the same full payload with the flag. The command
+below is that approved rerun.
+
+```bash
+node bin/icon-maker.js --brief \
+  --target apple,browser-extension,pwa \
+  --direction-name "Focused signal" \
+  --concept "clarity emerging from noisy inputs" \
+  --expresses "calm confidence" \
+  --visual-metaphor "one bright signal aligned through a field" \
+  --mood "precise,quiet" \
+  --tradeoff "abstract rather than literal" \
+  --palette "#0f172a,#14b8a6" \
+  --avoid "letters,platform logos" \
+  --approve-direction --json
+```
+
+The CLI remains offline and never calls a model. The agent shows the generated
+candidate and waits for separate artwork approval. Only after that approval may
+the provider output be placed inside the project and compiled with a preview:
 
 ```bash
 node bin/icon-maker.js --source ./brand/icon.png \
@@ -170,6 +220,18 @@ module.exports = {
     description: 'What the product does and for whom',
   },
   placeholder: false,
+  // Used by --brief when an approved source is not already present:
+  // design: {
+  //   name: 'Focused signal',
+  //   concept: 'clarity emerging from noisy inputs',
+  //   expresses: 'calm confidence',
+  //   metaphor: 'one bright signal aligned through a field',
+  //   mood: ['precise', 'quiet'],
+  //   tradeoff: 'abstract rather than literal',
+  //   palette: ['#0f172a', '#14b8a6'],
+  //   avoid: ['letters', 'platform logos'],
+  //   approved: false,
+  // },
   mark: {
     source: {
       default: './brand/icon.png',
@@ -190,6 +252,13 @@ module.exports = {
 For starter-only temporary artwork, opt in explicitly with
 `placeholder: true` and configure `mark.glyph`, `shape`, and colors. Placeholder
 mode is never selected merely because `mark.source` is absent.
+
+A config direction authorizes image-generation handoff only when `concept` and
+at least one `mood` are present and `design.approved` is `true`. Keep approval
+false until the user accepts that direction. The other hypothesis fields are
+preserved under `design.name`, `expresses`, `metaphor`, `tradeoff`, `palette`,
+and `avoid`. A configured approved source takes precedence and skips image
+generation.
 
 For untrusted target checkouts, prefer `icon-maker.config.json`. Auto-discovery
 loads the JSON form first and refuses to auto-execute a target repo's
@@ -300,8 +369,8 @@ second command when the assets are accepted.
 - Source plugin metadata: [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json)
 
 There is no MCP server in v1. The reliable surface is an offline CLI with a JSON
-contract plus a skill that may acquire a candidate from an available image
-provider, obtains approval, and only then invokes the compiler.
+contract plus a skill that collects and approves direction, presents one
+generated candidate for artwork approval, and only then invokes the compiler.
 
 ## Dev
 

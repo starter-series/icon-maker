@@ -18,6 +18,17 @@ Options:
   --adaptive-source <path>
                       optional transparent Expo adaptive-icon foreground
   --brief             print an upstream image-generation/source request
+  --direction-name <text>
+                      optional name for a proposed direction
+  --concept <text>    visual concept to review for --brief
+  --expresses <text>  what the proposed direction should express
+  --visual-metaphor <text>
+                      concrete visual metaphor for the direction
+  --mood <list>       comma-separated mood words for --brief
+  --tradeoff <text>   principal design tradeoff accepted by the direction
+  --palette <list>    optional comma-separated colors for --brief
+  --avoid <list>      optional comma-separated motifs or styles to avoid
+  --approve-direction confirm that the user approved this brief direction
   --placeholder       explicitly use the deterministic temporary mark
   --out-dir <path>    write generated files under this directory, grouped by target
   --patch             update known manifest/app/package icon fields after writing
@@ -56,6 +67,15 @@ function parseArgs(argv) {
     dryRun: false,
     init: false,
     brief: false,
+    directionName: null,
+    concept: null,
+    expresses: null,
+    visualMetaphor: null,
+    mood: null,
+    tradeoff: null,
+    palette: null,
+    avoid: null,
+    approveDirection: false,
     json: false,
     help: false,
     path: null,
@@ -77,12 +97,37 @@ function parseArgs(argv) {
     } else if (arg === '--out-dir') {
       opts.outDir = readOptionValue(argv, i, arg);
       i++;
+    } else if (arg === '--direction-name') {
+      opts.directionName = readOptionValue(argv, i, arg);
+      i++;
+    } else if (arg === '--concept') {
+      opts.concept = readOptionValue(argv, i, arg);
+      i++;
+    } else if (arg === '--expresses') {
+      opts.expresses = readOptionValue(argv, i, arg);
+      i++;
+    } else if (arg === '--visual-metaphor') {
+      opts.visualMetaphor = readOptionValue(argv, i, arg);
+      i++;
+    } else if (arg === '--mood') {
+      opts.mood = readOptionValue(argv, i, arg);
+      i++;
+    } else if (arg === '--tradeoff') {
+      opts.tradeoff = readOptionValue(argv, i, arg);
+      i++;
+    } else if (arg === '--palette') {
+      opts.palette = readOptionValue(argv, i, arg);
+      i++;
+    } else if (arg === '--avoid') {
+      opts.avoid = readOptionValue(argv, i, arg);
+      i++;
     }
     else if (arg === '--patch') opts.patch = true;
     else if (arg === '--preview') opts.preview = true;
     else if (arg === '--dry-run') opts.dryRun = true;
     else if (arg === '--init') opts.init = true;
     else if (arg === '--brief') opts.brief = true;
+    else if (arg === '--approve-direction') opts.approveDirection = true;
     else if (arg === '--placeholder') opts.placeholder = true;
     else if (arg === '--json') opts.json = true;
     else if (arg === '-h' || arg === '--help') opts.help = true;
@@ -102,6 +147,9 @@ function parseArgs(argv) {
   if (opts.brief && (opts.patch || opts.preview || opts.dryRun || opts.outDir || opts.placeholder)) {
     throw usageError('--brief cannot be combined with compile output options');
   }
+  const hasDirectionOptions = opts.directionName || opts.concept || opts.expresses || opts.visualMetaphor
+    || opts.mood || opts.tradeoff || opts.palette || opts.avoid || opts.approveDirection;
+  if (hasDirectionOptions && !opts.brief) throw usageError('direction options require --brief');
   return opts;
 }
 

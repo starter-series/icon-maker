@@ -1,7 +1,10 @@
+const fs = require('fs');
 const path = require('path');
+const { discoverBrandContext } = require('./brand');
 const { defaultConfig, loadConfig, mergeConfig } = require('./config');
+const { loadSource } = require('./source');
 const { TARGETS, resolveTargets } = require('./targets');
-const { sourceAcquisitionWorkflow, sourceContract } = require('./workflow');
+const { resolveDirection, sourceAcquisitionWorkflow, sourceContract } = require('./workflow');
 
 const TARGET_GUIDANCE = {
   apple: 'use full square artwork with no baked-in platform mask or rounded-corner clipping; keep key details away from the outer edge.',
@@ -14,6 +17,23 @@ const TARGET_GUIDANCE = {
   generic: 'create a reusable square master suitable for later platform compilation.',
 };
 
+function technicalConstraints(targets) {
+  return targets.map((target) => ({
+    target,
+    label: TARGETS[target].label,
+    guidance: TARGET_GUIDANCE[target],
+    outputs: TARGETS[target].files.map((file) => ({
+      path: file.path,
+      format: file.format,
+      size: file.size,
+      sizes: file.sizes,
+      role: file.role || 'default',
+      opaqueBackground: file.opaqueBackground === true,
+      transparentBackground: file.transparentBackground === true,
+    })),
+  }));
+}
+
 function resolveBriefConfig(inputConfig, cwd, explicitConfig, targets) {
   if (inputConfig) {
     const presetTargets = targets?.length ? targets : inputConfig.targets || ['auto'];
@@ -22,7 +42,83 @@ function resolveBriefConfig(inputConfig, cwd, explicitConfig, targets) {
   return loadConfig(cwd, explicitConfig, targets).config;
 }
 
-function renderDesignBrief(config, targets) {
+function renderDirection(direction) {
+  const lines = [
+    direction.name ? `- Name: ${direction.name}` : null,
+    `- Concept: ${direction.concept}`,
+    direction.expresses ? `- What it expresses: ${direction.expresses}` : null,
+    direction.metaphor ? `- Visual metaphor: ${direction.metaphor}` : null,
+    `- Mood: ${direction.mood.join(', ')}`,
+    direction.tradeoff ? `- Tradeoff: ${direction.tradeoff}` : null,
+    direction.palette.length ? `- Palette: ${direction.palette.join(', ')}` : '- Palette: not specified; do not imply approval',
+    direction.avoid.length ? `- Avoid: ${direction.avoid.join(', ')}` : null,
+    direction.references.length ? `- References: ${direction.references.join(', ')}` : null,
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+
+function renderKnownDirection(direction) {
+  const lines = [
+    direction.name ? `- Name: ${direction.name}` : null,
+    direction.concept ? `- Concept: ${direction.concept}` : null,
+    direction.expresses ? `- What it expresses: ${direction.expresses}` : null,
+    direction.metaphor ? `- Visual metaphor: ${direction.metaphor}` : null,
+    direction.mood.length ? `- Mood: ${direction.mood.join(', ')}` : null,
+    direction.tradeoff ? `- Tradeoff: ${direction.tradeoff}` : null,
+    direction.palette.length ? `- Palette: ${direction.palette.join(', ')}` : null,
+    direction.avoid.length ? `- Avoid: ${direction.avoid.join(', ')}` : null,
+  ].filter(Boolean);
+  return lines.length ? lines.join('\n') : '- Nothing has been approved or proposed yet.';
+}
+
+function renderBrandEvidence(brandContext) {
+  const lines = [
+    ...brandContext.assets.map((item) => `- Asset (${item.kind}): ${item.relativePath}`),
+    ...brandContext.documents.map((item) => `- Guidance document: ${item.relativePath}`),
+    ...brandContext.colors.map((item) => `- Color ${item.value}: ${item.source}`),
+  ];
+  return lines.length ? lines.join('\n') : '- No existing logo, palette, or brand-guidance evidence was found.';
+}
+
+function renderDirectionRequest(config, targets, direction, brandContext, workflow) {
+  const projectName = config.project?.name || 'Untitled app';
+  const description = config.project?.description || config.project?.purpose;
+  const targetLines = targets.map((target) => `- ${TARGETS[target].label}: ${TARGET_GUIDANCE[target]}`);
+  const questions = workflow.questions.map((item) => `- ${item.prompt}`);
+  return `# Icon direction required: ${projectName}
+
+Image generation is blocked until the visual direction is explicit. Product context and technical constraints are evidence, not approved brand intent.
+
+## Product context
+
+${description || 'No product description was provided.'}
+
+## Existing brand evidence
+
+${renderBrandEvidence(brandContext)}
+
+${brandContext.hasEvidence ? 'Review this evidence with the requester before treating it as current brand intent.' : ''}
+
+## Technical target constraints
+
+${targetLines.join('\n')}
+
+## Known direction (unapproved)
+
+${renderKnownDirection(direction)}
+
+## Missing direction
+
+${questions.join('\n')}
+
+If the requester does not know yet, offer exactly three text-only exploratory directions before generating any image. For each direction include: name, what it expresses, visual metaphor, mood, and tradeoff. Ground meaning in product context and user-confirmed brand evidence; use technical constraints only to check feasibility. Clearly label the directions as hypotheses rather than approved intent. The requester may select, combine, revise, or reject all three. Wait for that decision, then rerun the source request with every field from the resulting direction for review.
+`;
+}
+
+function renderDesignBrief(config, targets, direction, brandContext) {
+  if (!direction?.approved) {
+    throw new Error('icon-maker: image-generation briefs require an explicitly approved direction');
+  }
   const projectName = config.project?.name || 'Untitled app';
   const slug = config.project?.slug || 'app-icon';
   const description = config.project?.description || config.project?.purpose;
@@ -60,6 +156,14 @@ Create one distinctive master app icon candidate for "${projectName}" (${slug}) 
 
 ${description || 'No product description was provided. Treat any result as exploratory and do not imply that an inferred visual direction is approved.'}
 
+## Approved direction for this candidate
+
+${renderDirection(direction)}
+
+## Existing brand evidence
+
+${renderBrandEvidence(brandContext)}
+
 ## Deliverable
 
 ${deliverableLines.join('\n')}
@@ -74,13 +178,74 @@ ${compositionChecks.join('\n')}
 `;
 }
 
+function renderDirectionReview(config, targets, direction, brandContext) {
+  const projectName = config.project?.name || 'Untitled app';
+  const targetLines = targets.map((target) => `- ${TARGETS[target].label}: ${TARGET_GUIDANCE[target]}`);
+  return `# Icon direction approval required: ${projectName}
+
+The following direction is complete enough to review, but it is not approved. Do not generate an image yet.
+
+## Proposed direction
+
+${renderDirection(direction)}
+
+## Existing brand evidence
+
+${renderBrandEvidence(brandContext)}
+
+## Technical target constraints
+
+${targetLines.join('\n')}
+
+Explain what this direction would express and its main tradeoff. Wait for explicit user approval or revision. After approval, rerun the source request with the same direction and the direction-approval flag.
+`;
+}
+
+function relativeSourcePath(cwd, sourcePath) {
+  return path.relative(fs.realpathSync(cwd), sourcePath);
+}
+
+function renderSourceReady(cwd, source) {
+  const relativePath = relativeSourcePath(cwd, source.path);
+  return `# Approved icon source found\n\nImage generation is not needed. Compile a preview from ${relativePath} and obtain approval before patching project files.\n`;
+}
+
+function sourceSummary(cwd, source) {
+  if (!source) return null;
+  return {
+    path: relativeSourcePath(cwd, source.path),
+    type: source.type,
+    width: source.width,
+    height: source.height,
+  };
+}
+
 function makeDesignBrief(inputConfig = null, opts = {}) {
   const cwd = path.resolve(opts.cwd || process.cwd());
   const config = resolveBriefConfig(inputConfig, cwd, opts.config, opts.targets || []);
   const targets = resolveTargets(opts.targets || [], cwd, config.targets);
+  const brandContext = discoverBrandContext(cwd);
+  const direction = resolveDirection(config, opts.direction || {});
+  const approvedSource = loadSource(cwd, config);
+  const workflow = sourceAcquisitionWorkflow(targets, { approvedSource, brandContext, direction });
+  const prompt = workflow.state === 'ready-to-compile'
+    ? renderSourceReady(cwd, approvedSource)
+    : workflow.state === 'needs-direction'
+      ? renderDirectionRequest(config, targets, direction, brandContext, workflow)
+      : workflow.state === 'needs-direction-approval'
+        ? renderDirectionReview(config, targets, direction, brandContext)
+        : renderDesignBrief(config, targets, direction, brandContext);
+  const requestType = {
+    'ready-to-compile': 'compile',
+    'needs-direction': 'direction-discovery',
+    'needs-direction-approval': 'direction-review',
+    'ready-for-image-generation': 'image-generation',
+  }[workflow.state];
   return {
     ok: true,
     kind: 'source-request',
+    schemaVersion: 2,
+    requestType,
     cwd,
     targets,
     project: {
@@ -88,10 +253,15 @@ function makeDesignBrief(inputConfig = null, opts = {}) {
       slug: config.project?.slug || path.basename(cwd),
       description: config.project?.description || config.project?.purpose || null,
     },
+    source: sourceSummary(cwd, approvedSource),
+    brandContext,
+    direction,
+    technicalConstraints: technicalConstraints(targets),
     sourceContract: sourceContract(targets),
-    workflow: sourceAcquisitionWorkflow(targets),
-    prompt: renderDesignBrief(config, targets),
+    workflow,
+    prompt,
+    imagePrompt: requestType === 'image-generation' ? prompt : null,
   };
 }
 
-module.exports = { makeDesignBrief, renderDesignBrief };
+module.exports = { makeDesignBrief, renderDesignBrief, renderDirectionRequest };

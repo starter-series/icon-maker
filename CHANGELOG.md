@@ -7,9 +7,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
-- Added a provider-neutral `--brief` source request with machine-readable
-  `generate-image`, provider-boundary, source-contract, and approval metadata.
-  The offline CLI still requires no plugin, account, or network call.
+- Added provider-neutral `--brief` schema version 2 with `requestType` values
+  `direction-discovery`, `direction-review`, `image-generation`, and `compile`;
+  machine-readable target constraints, bounded local brand evidence,
+  source-contract, provider-boundary, and approval metadata remain offline.
+  `imagePrompt` is non-null only for an explicitly approved image-generation request.
+- Added lossless direction round trips through `--direction-name`, `--concept`,
+  `--expresses`, `--visual-metaphor`, `--mood`, `--tradeoff`, optional
+  `--palette` / `--avoid`, and matching `design` config fields. Partial input is
+  retained for review before `--approve-direction` or `design.approved: true`.
 - Added explicit `--placeholder` mode for deterministic temporary artwork.
 - Added `--source <path>` for compiling a project-local SVG or PNG directly,
   including source metadata and raster upscaling warnings in JSON results.
@@ -23,9 +29,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ### Changed
 - Missing approved source artwork is now a usage error. The built-in geometric
   mark is no longer an implicit fallback when `mark.source` is absent.
-- The agent skill now uses an available image-generation provider only when
-  source acquisition was requested, presents the candidate for approval, and
-  forbids hand-authored SVG synthesis as a fallback.
+- The agent skill now blocks image generation while direction is missing or
+  unapproved, offers exactly three complete text-only hypotheses when needed,
+  preserves a selected hypothesis through direction approval, then presents
+  the generated candidate for separate artwork approval before compilation.
+- The skill continues to forbid hand-authored SVG synthesis as a fallback.
 - Image-generation handoff now prefers a 1024px PNG; SVG remains accepted when
   it is native vector artwork from a trusted source.
 - Added packed-install smoke coverage so CI verifies the packed tarball inside a

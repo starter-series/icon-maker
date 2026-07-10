@@ -18,11 +18,21 @@ call external image services, read credentials, or make network requests at
 runtime. Use `--patch` only when you want it to update known icon fields in
 local project manifests.
 
+`--brief` performs a bounded, read-only evidence scan inside the target
+checkout. It limits traversal and result counts, skips symlinks plus common
+dependency/build directories, and inspects only likely local brand assets,
+guidance files, structured manifest colors, small SVG color values, and
+existing Xcode App Icons. This scan makes no network requests. Its findings are
+evidence for user review, never approved brand or design intent.
+
 The optional agent workflow may call an image-generation provider outside the
 CLI. Provider credentials, retention, and content policies belong to that
-external tool. Generated candidates must be reviewed before being placed in a
-target checkout and passed to icon-maker. Missing source is an error unless
-temporary artwork was explicitly requested with `--placeholder`.
+external tool. `imagePrompt` is null for `direction-discovery`,
+`direction-review`, and `compile`; only the non-null field from an explicitly
+approved `image-generation` request may cross the boundary. Generated candidates require separate artwork approval
+before being placed in a target checkout and passed to icon-maker. Missing
+source is an error unless temporary artwork was explicitly requested with
+`--placeholder`.
 
 Config files are loaded from the target directory. An `icon-maker.config.json`
 is parsed as data only and never executed. An `icon-maker.config.js` is executed
