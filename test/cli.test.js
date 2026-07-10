@@ -39,6 +39,9 @@ describe('cli args', () => {
     ]);
     assert.equal(compile.source, './brand/icon.png');
     assert.equal(compile.adaptiveSource, './brand/icon-adaptive.svg');
+
+    const placeholder = parseArgs(['--placeholder', '--target', 'generic']);
+    assert.equal(placeholder.placeholder, true);
   });
 
   test('rejects unknown options and missing option values as usage errors', () => {
@@ -48,9 +51,11 @@ describe('cli args', () => {
     assert.throws(() => parseArgs(['--brief', '--source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });
     assert.throws(() => parseArgs(['--brief', '--preview']), { exitCode: 2, message: /compile output options/ });
     assert.throws(() => parseArgs(['--init', '--source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });
+    assert.throws(() => parseArgs(['--placeholder', '--source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });
+    assert.throws(() => parseArgs(['--brief', '--placeholder']), { exitCode: 2, message: /cannot be combined/ });
   });
 
-  test('prints a provider-neutral design brief without writing files', () => {
+  test('prints an image-generation source request without writing files', () => {
     const cwd = tempDir();
     const bin = path.resolve(__dirname, '..', 'bin', 'icon-maker.js');
     const result = spawnSync(process.execPath, [bin, cwd, '--brief', '--target', 'apple,pwa', '--json'], {
@@ -58,11 +63,16 @@ describe('cli args', () => {
     });
     const parsed = JSON.parse(result.stdout);
     assert.equal(result.status, 0);
-    assert.equal(parsed.kind, 'design-brief');
+    assert.equal(parsed.kind, 'source-request');
     assert.deepEqual(parsed.targets, ['apple', 'pwa']);
-    assert.deepEqual(parsed.sourceContract.accepted, ['svg', 'png']);
+    assert.equal(parsed.sourceContract.preferred, 'png');
+    assert.deepEqual(parsed.sourceContract.accepted, ['png', 'svg']);
+    assert.equal(parsed.workflow.nextAction, 'generate-image');
+    assert.equal(parsed.workflow.approvalRequired, true);
+    assert.equal(parsed.workflow.noFallbackSvgSynthesis, true);
     assert.match(parsed.prompt, /Xcode/);
-    assert.match(parsed.prompt, /text-only interface/);
+    assert.match(parsed.prompt, /image-generation model/);
+    assert.doesNotMatch(parsed.prompt, /exactly one SVG code block/);
     assert.deepEqual(fs.readdirSync(cwd), []);
   });
 
@@ -93,7 +103,7 @@ describe('cli args', () => {
     assert.match(parsed.prompt, /quiet focus timer for remote teams/);
   });
 
-  test('uses the requested target preset when no config exists', () => {
+  test('requests separate finished image assets for Expo', () => {
     const cwd = tempDir();
     const bin = path.resolve(__dirname, '..', 'bin', 'icon-maker.js');
     const result = spawnSync(process.execPath, [bin, cwd, '--brief', '--target', 'expo', '--json'], {
@@ -101,16 +111,16 @@ describe('cli args', () => {
     });
     const parsed = JSON.parse(result.stdout);
     assert.equal(result.status, 0);
-    assert.match(parsed.prompt, /background #4630eb/);
-    assert.match(parsed.prompt, /exactly two labelled SVG code blocks/);
-    assert.doesNotMatch(parsed.prompt, /exactly one SVG code block/);
+    assert.deepEqual(parsed.sourceContract.variants, ['default', 'adaptiveForeground']);
+    assert.match(parsed.prompt, /two clearly named finished image files/);
+    assert.match(parsed.prompt, /transparent PNG/);
   });
 
-  test('uses input config targets for programmatic brief presets', () => {
+  test('uses input config targets for programmatic source requests', () => {
     const cwd = tempDir();
     const result = makeDesignBrief({ project: { name: 'Expo App' }, targets: ['expo'] }, { cwd });
-    assert.match(result.prompt, /background #4630eb/);
     assert.deepEqual(result.targets, ['expo']);
+    assert.equal(result.workflow.nextAction, 'generate-image');
   });
 
   test('passes a direct source through the CLI without a config file', () => {
@@ -130,7 +140,26 @@ describe('cli args', () => {
     const parsed = JSON.parse(result.stdout);
     assert.equal(result.status, 0);
     assert.equal(parsed.source.type, 'svg');
+    assert.equal(parsed.sourceMode, 'source');
     assert.equal(parsed.produced.every((item) => fs.existsSync(item.path)), true);
+  });
+
+  test('requires a source by default and keeps placeholder generation explicit', () => {
+    const cwd = tempDir();
+    const bin = path.resolve(__dirname, '..', 'bin', 'icon-maker.js');
+    const missing = spawnSync(process.execPath, [bin, cwd, '--target', 'generic', '--json'], { encoding: 'utf8' });
+    assert.equal(missing.status, 2);
+    assert.match(JSON.parse(missing.stdout).error, /no approved icon source found/);
+
+    const placeholder = spawnSync(
+      process.execPath,
+      [bin, cwd, '--placeholder', '--target', 'generic', '--out-dir', 'out', '--json'],
+      { encoding: 'utf8' },
+    );
+    const parsed = JSON.parse(placeholder.stdout);
+    assert.equal(placeholder.status, 0);
+    assert.equal(parsed.sourceMode, 'placeholder');
+    assert.ok(parsed.warnings.some((warning) => warning.code === 'placeholder-source'));
   });
 
   test('prints JSON usage errors with exit code 2', () => {
@@ -184,7 +213,7 @@ describe('cli args', () => {
       path.join(cwd, 'icon-maker.config.js'),
       "console.log('CONFIG_NOISE'); module.exports = { project: { name: 'Noisy' }, targets: ['generic'] };\n",
     );
-    const result = spawnSync(process.execPath, [bin, '--dry-run', '--json'], { cwd, encoding: 'utf8' });
+    const result = spawnSync(process.execPath, [bin, '--placeholder', '--dry-run', '--json'], { cwd, encoding: 'utf8' });
     const parsed = JSON.parse(result.stdout);
     assert.equal(result.status, 0);
     assert.equal(parsed.ok, true);
@@ -199,7 +228,7 @@ describe('cli args', () => {
       path.join(cwd, 'icon-maker.config.js'),
       "process.nextTick(() => console.log('ASYNC_CONFIG_NOISE')); module.exports = { targets: ['generic'] };\n",
     );
-    const result = spawnSync(process.execPath, [bin, '--dry-run', '--json'], { cwd, encoding: 'utf8' });
+    const result = spawnSync(process.execPath, [bin, '--placeholder', '--dry-run', '--json'], { cwd, encoding: 'utf8' });
     assert.equal(result.status, 0);
     assert.equal(result.stdout.trim().split('\n').length, 1);
     assert.equal(JSON.parse(result.stdout).ok, true);

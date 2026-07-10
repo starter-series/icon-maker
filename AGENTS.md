@@ -9,25 +9,44 @@ CommonJS, no build step. Runtime dependencies are scarce and explicit:
 Compile icon assets from this source checkout:
 
 ```bash
-node bin/icon-maker.js --brief --target apple,browser-extension,pwa
-node bin/icon-maker.js --source ./brand/icon.svg --target apple,pwa --preview --json
-node bin/icon-maker.js --source ./brand/icon.svg --adaptive-source ./brand/icon-adaptive.svg --target expo --preview --json
-node bin/icon-maker.js --target auto --json
-node bin/icon-maker.js <path> --target browser-extension --patch --json
+node bin/icon-maker.js --brief --target apple,browser-extension,pwa --json
+node bin/icon-maker.js --source ./brand/icon.png --target apple,pwa --preview --json
+node bin/icon-maker.js --source ./brand/icon.png --adaptive-source ./brand/icon-adaptive.png --target expo --preview --json
+node bin/icon-maker.js --placeholder --target auto --json
+node bin/icon-maker.js <path> --source ./brand/icon.png --target browser-extension --patch --json
 ```
 
 After `iconkit` is published to npm, the equivalent public commands are:
 
 ```bash
-npx iconkit --brief --target apple,browser-extension,pwa
-npx iconkit --source ./brand/icon.svg --target apple,pwa --preview --json
-npx iconkit --source ./brand/icon.svg --adaptive-source ./brand/icon-adaptive.svg --target expo --preview --json
-npx iconkit --target auto --json
-npx iconkit <path> --target browser-extension --patch --json
+npx iconkit --brief --target apple,browser-extension,pwa --json
+npx iconkit --source ./brand/icon.png --target apple,pwa --preview --json
+npx iconkit --source ./brand/icon.png --adaptive-source ./brand/icon-adaptive.png --target expo --preview --json
+npx iconkit --placeholder --target auto --json
+npx iconkit <path> --source ./brand/icon.png --target browser-extension --patch --json
 ```
 
 `--json` prints exactly one JSON object to stdout. Exit codes: `0` ok, `1`
 runtime failure, `2` usage/init conflict.
+
+## Agent source acquisition
+
+- If an approved project-local SVG/PNG already exists, skip image generation
+  and compile that source.
+- If no source exists and the user explicitly asks to create or acquire a
+  design, run `--brief --json`, pass its prompt and source contract to an
+  available image-generation model, and present the resulting image for review.
+- Never hand-author SVG primitives, canvas code, or CSS art as a fallback for
+  unavailable image generation. Return the source request and wait for an
+  approved asset instead.
+- Do not compile, patch, or treat generated artwork as project intent until the
+  user explicitly approves it. After approval, materialize the PNG/SVG inside
+  the target checkout, compile with `--preview`, then patch in a separate step.
+- Use a provider's local output path when one exists. If it returns only a
+  conversation image, wait for the approved image to be attached/exported;
+  never recreate it with SVG primitives or a screenshot.
+- `--placeholder` is only for an explicitly requested deterministic temporary
+  mark. It is not a substitute for image generation or approved artwork.
 
 ## Structure
 
@@ -36,7 +55,8 @@ src/
   generate.js  -> makeIcons(config, opts): target resolution, SVG/PNG/ICO/ICNS writes, optional patches/preview
   targets.js   -> target definitions and repo autodetection
   apple.js     -> Xcode project/catalog discovery and safe Apple output routing
-  brief.js     -> provider-neutral design brief generation for human/chat handoff
+  brief.js     -> image-generation/source request for upstream provider handoff
+  workflow.js  -> source acquisition, image-generation handoff, approval and placeholder policy
   mark.js      -> deterministic vector primitive construction
   png.js       -> tiny RGBA PNG encoder/rasterizer using Node zlib
   svg.js       -> SVG source renderer from the same primitives
@@ -55,8 +75,13 @@ skills/create-icons/ -> Agent skill wrapping the CLI
 
 - Keep runtime dependencies scarce and explicit. `@resvg/resvg-js` exists only
   so custom SVG/PNG source files can become platform assets.
-- Design providers are optional upstream inputs. `--brief` and `--source` must
-  remain usable without an MCP server, plugin, account, or network call.
+- Design providers are optional upstream inputs. The CLI never calls them or
+  requires network access. Agent workflows may invoke an available image model
+  before compilation, but must keep approval and source handoff explicit.
+- Missing source is an error by default. Built-in deterministic artwork is
+  available only through explicit `--placeholder` intent.
+- Never synthesize hand-authored SVG as a fallback for an unavailable image
+  model. Image-generation output is a candidate, not approved project intent.
 - Apple output may auto-route only when one Xcode asset catalog is unambiguous.
   Multiple catalogs require explicit `apple.assetCatalog` configuration, and
   multiple selected icon names require `apple.appIconSet`.

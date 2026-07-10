@@ -1,7 +1,7 @@
 {
   "name": "iconkit",
   "version": "0.1.0",
-  "description": "Compile one icon source into Xcode, app, extension, connector, and web delivery assets.",
+  "description": "Compile one approved icon source into Xcode, app, extension, connector, and web delivery assets.",
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js"

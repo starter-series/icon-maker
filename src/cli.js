@@ -17,7 +17,8 @@ Options:
   --source <path>     compile a self-contained SVG or PNG without editing config
   --adaptive-source <path>
                       optional transparent Expo adaptive-icon foreground
-  --brief             print a provider-neutral design prompt instead of compiling
+  --brief             print an upstream image-generation/source request
+  --placeholder       explicitly use the deterministic temporary mark
   --out-dir <path>    write generated files under this directory, grouped by target
   --patch             update known manifest/app/package icon fields after writing
   --preview           write icon-preview.html contact sheet next to the outputs
@@ -48,6 +49,7 @@ function parseArgs(argv) {
     config: null,
     source: null,
     adaptiveSource: null,
+    placeholder: false,
     outDir: null,
     patch: false,
     preview: false,
@@ -81,6 +83,7 @@ function parseArgs(argv) {
     else if (arg === '--dry-run') opts.dryRun = true;
     else if (arg === '--init') opts.init = true;
     else if (arg === '--brief') opts.brief = true;
+    else if (arg === '--placeholder') opts.placeholder = true;
     else if (arg === '--json') opts.json = true;
     else if (arg === '-h' || arg === '--help') opts.help = true;
     else if (!arg.startsWith('-') && opts.path === null) opts.path = arg;
@@ -92,7 +95,11 @@ function parseArgs(argv) {
   if (opts.brief && opts.adaptiveSource) throw usageError('--brief cannot be combined with --adaptive-source');
   if (opts.init && opts.source) throw usageError('--init cannot be combined with --source');
   if (opts.init && opts.adaptiveSource) throw usageError('--init cannot be combined with --adaptive-source');
-  if (opts.brief && (opts.patch || opts.preview || opts.dryRun || opts.outDir)) {
+  if (opts.init && opts.placeholder) throw usageError('--init cannot be combined with --placeholder');
+  if (opts.placeholder && (opts.source || opts.adaptiveSource)) {
+    throw usageError('--placeholder cannot be combined with source options');
+  }
+  if (opts.brief && (opts.patch || opts.preview || opts.dryRun || opts.outDir || opts.placeholder)) {
     throw usageError('--brief cannot be combined with compile output options');
   }
   return opts;

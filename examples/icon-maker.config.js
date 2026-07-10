@@ -1,4 +1,5 @@
 module.exports = {
+  placeholder: true,
   project: {
     name: 'Starter App',
     slug: 'starter-app',
@@ -11,7 +12,7 @@ module.exports = {
     foreground: '#f8fafc',
     accent: '#38bdf8',
     radius: 0.24,
-    // source: { default: './brand/icon.svg', adaptiveForeground: './brand/icon-adaptive.svg' },
+    // source: { default: './brand/icon.png', adaptiveForeground: './brand/icon-adaptive.png' },
   },
   // apple: { assetCatalog: './StarterApp/Assets.xcassets', appIconSet: 'AppIcon' },
   targets: ['browser-extension'],

@@ -1,7 +1,7 @@
 {
   "name": "icon-maker",
   "version": "0.1.0",
-  "description": "Compile provider-neutral SVG/PNG designs into Apple/Xcode, app, extension, connector, and web icon assets.",
+  "description": "Acquire an image candidate through an available provider, obtain approval, and compile the SVG/PNG into delivery assets.",
   "author": {
     "name": "heznpc",
     "url": "https://github.com/heznpc"

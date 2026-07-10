@@ -16,6 +16,7 @@ const { renderSvg } = require('./svg');
 const { buildPrimitives } = require('./mark');
 const { TARGETS, resolveTargets } = require('./targets');
 const { applyPatches } = require('./patch');
+const { resolveSourceMode } = require('./workflow');
 
 function ensureDir(file) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -269,6 +270,18 @@ function makeIcons(inputConfig = null, opts = {}) {
     default: loadSource(cwd, config),
     adaptiveForeground: targets.includes('expo') ? loadSource(cwd, config, 'adaptive-foreground') : null,
   };
+  if (opts.placeholder && sources.default) {
+    const err = new Error('icon-maker: --placeholder cannot be used when config already provides mark.source');
+    err.exitCode = 2;
+    throw err;
+  }
+  const sourceMode = resolveSourceMode(sources.default, config, opts);
+  if (sourceMode === 'placeholder') {
+    warnings.push({
+      code: 'placeholder-source',
+      message: 'using the deterministic placeholder mark; replace it with an approved SVG or PNG before distribution',
+    });
+  }
   addSourceWarnings(sources.default, targets, warnings);
   addSourceWarnings(sources.adaptiveForeground, ['expo'], warnings);
   if (targets.includes('expo') && sources.default && !sources.adaptiveForeground) {
@@ -354,6 +367,7 @@ function makeIcons(inputConfig = null, opts = {}) {
     ok: true,
     cwd,
     targets,
+    sourceMode,
     source: sourceSummary(sources.default),
     sourceVariants: { adaptiveForeground: sourceSummary(sources.adaptiveForeground) },
     produced,

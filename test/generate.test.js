@@ -44,6 +44,7 @@ function pngColorType(png) {
 
 const config = {
   project: { name: 'Example App' },
+  placeholder: true,
   mark: {
     glyph: 'braces',
     shape: 'squircle',
@@ -59,6 +60,8 @@ describe('makeIcons', () => {
     const cwd = tempDir();
     const result = makeIcons(config, { cwd, targets: ['generic'] });
     assert.equal(result.ok, true);
+    assert.equal(result.sourceMode, 'placeholder');
+    assert.ok(result.warnings.some((warning) => warning.code === 'placeholder-source'));
     assert.equal(result.produced.length, 2);
 
     const png = path.join(cwd, 'assets', 'icon.png');
@@ -67,6 +70,30 @@ describe('makeIcons', () => {
     assert.equal(fs.existsSync(svg), true);
     assert.deepEqual(fs.readFileSync(png).subarray(0, PNG_SIGNATURE.length), PNG_SIGNATURE);
     assert.ok(fs.readFileSync(svg, 'utf8').includes('<title>Example App</title>'));
+  });
+
+  test('requires an approved source unless placeholder mode is explicit', () => {
+    const cwd = tempDir();
+    assert.throws(
+      () => makeIcons({ ...config, placeholder: false }, { cwd, targets: ['generic'], write: false }),
+      { exitCode: 2, message: /no approved icon source found/ },
+    );
+  });
+
+  test('rejects an explicit placeholder flag when config already provides a source', () => {
+    const cwd = tempDir();
+    fs.mkdirSync(path.join(cwd, 'brand'));
+    fs.writeFileSync(
+      path.join(cwd, 'brand', 'icon.svg'),
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64"/></svg>',
+    );
+    assert.throws(
+      () => makeIcons(
+        { ...config, mark: { source: './brand/icon.svg' } },
+        { cwd, targets: ['generic'], placeholder: true, write: false },
+      ),
+      { exitCode: 2, message: /placeholder cannot be used/ },
+    );
   });
 
   test('supports dry-run without writing', () => {
@@ -196,6 +223,7 @@ describe('makeIcons', () => {
     fs.mkdirSync(path.join(cwd, 'brand'));
     fs.writeFileSync(path.join(cwd, 'brand', 'logo.svg'), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#000"/><circle cx="32" cy="32" r="16" fill="#fff"/></svg>');
     const result = makeIcons({ ...config, mark: { source: './brand/logo.svg' } }, { cwd, targets: ['generic'] });
+    assert.equal(result.sourceMode, 'source');
     const svg = fs.readFileSync(path.join(cwd, 'assets', 'icon.svg'), 'utf8');
     assert.ok(svg.includes('<circle cx="32"'));
     assert.deepEqual(fs.readFileSync(path.join(cwd, 'assets', 'icon.png')).subarray(0, PNG_SIGNATURE.length), PNG_SIGNATURE);
@@ -221,6 +249,7 @@ describe('makeIcons', () => {
       width: 64,
       height: 32,
     });
+    assert.equal(result.sourceMode, 'source');
     assert.deepEqual(pngDimensions(fs.readFileSync(path.join(cwd, 'assets', 'icon.png'))), {
       width: 1024,
       height: 1024,
@@ -411,7 +440,7 @@ describe('makeIcons', () => {
 
   test('uses input config targets to select programmatic API presets', () => {
     const cwd = tempDir();
-    makeIcons({ project: { name: 'Expo Preset' }, targets: ['expo'] }, { cwd });
+    makeIcons({ project: { name: 'Expo Preset' }, placeholder: true, targets: ['expo'] }, { cwd });
     assert.match(fs.readFileSync(path.join(cwd, 'assets', 'icon.svg'), 'utf8'), /fill="#4630eb"/);
   });
 

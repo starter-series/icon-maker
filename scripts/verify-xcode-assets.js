@@ -42,6 +42,7 @@ try {
       foreground: '#ffffff',
       accent: '#38bdf8',
     },
+    placeholder: true,
     targets: ['apple'],
   }, { cwd });
   const iosIcon = result.produced.find((item) => item.path.endsWith('AppIcon-ios-1024.png'));

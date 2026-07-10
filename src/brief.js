@@ -1,6 +1,7 @@
 const path = require('path');
 const { defaultConfig, loadConfig, mergeConfig } = require('./config');
 const { TARGETS, resolveTargets } = require('./targets');
+const { sourceAcquisitionWorkflow, sourceContract } = require('./workflow');
 
 const TARGET_GUIDANCE = {
   apple: 'use full square artwork with no baked-in platform mask or rounded-corner clipping; keep key details away from the outer edge.',
@@ -26,17 +27,20 @@ function renderDesignBrief(config, targets) {
   const slug = config.project?.slug || 'app-icon';
   const description = config.project?.description || config.project?.purpose;
   const targetLines = targets.map((target) => `- ${TARGETS[target].label}: ${TARGET_GUIDANCE[target]}`);
-  const colors = [
-    config.mark?.background && `background ${config.mark.background}`,
-    config.mark?.foreground && `foreground ${config.mark.foreground}`,
-    config.mark?.accent && `accent ${config.mark.accent}`,
-  ].filter(Boolean).join(', ');
-  const variantDeliverables = targets.includes('expo')
-    ? '- Also provide a separate self-contained SVG with a transparent canvas containing only the centered adaptive foreground mark.'
-    : null;
+  const deliverableLines = [
+    '- Preferred from image-generation providers: one square PNG at least 1024 x 1024 pixels.',
+    '- Accepted alternative: a self-contained SVG only when supplied as native vector artwork.',
+    targets.includes('expo')
+      ? '- Also provide a separate 1024 x 1024 transparent PNG containing only the centered adaptive foreground mark. A native vector SVG is also accepted.'
+      : null,
+    '- Native SVG must use embedded vector shapes and fills/strokes without remote fonts, linked images, scripts, or event handlers.',
+    '- Do not include explanatory text, mockups, device frames, drop shadows outside the canvas, or multiple icon candidates in the final asset.',
+    '- Avoid words and fine lettering unless a letterform is essential to the product identity.',
+    '- Do not infer that an unspecified palette or visual style represents approved brand intent.',
+  ].filter(Boolean);
   const returnInstruction = targets.includes('expo')
-    ? '- Return two clearly named finished assets: `icon.svg` for the default icon and `icon-adaptive.svg` for the transparent adaptive foreground. In a text-only interface, return exactly two labelled SVG code blocks.'
-    : '- Return the finished asset itself. In a text-only interface, return exactly one SVG code block; in an interface that can create files, provide the SVG or PNG file.';
+    ? '- Return two clearly named finished image files: `icon.png` and `icon-adaptive.png` (or native vector equivalents).'
+    : '- Return one finished image file. Prefer PNG from an image-generation model; use SVG only when it is native vector artwork.';
   const compositionChecks = [
     '- Keep the main symbol centered with generous breathing room.',
     '- Make the core idea identifiable at 16 pixels.',
@@ -44,26 +48,21 @@ function renderDesignBrief(config, targets) {
       ? "- Use an opaque full-canvas background for Apple app-icon delivery; do not pre-apply Apple's rounded mask."
       : null,
     '- Avoid trademarked logos, copyrighted characters, and replicas of platform hardware.',
+    '- If finished image generation is unavailable, do not substitute a schematic SVG assembled from generic circles, boxes, arrows, or UI symbols.',
     returnInstruction,
   ].filter(Boolean);
 
   return `# Master icon design brief: ${projectName}
 
-Create one distinctive master app icon for "${projectName}" (${slug}). The result will be compiled into production assets for multiple platforms, so prioritize a simple silhouette, strong contrast, and recognition at very small sizes.
+Create one distinctive master app icon candidate for "${projectName}" (${slug}) using an image-generation model or another visual design provider. The result will be reviewed before it is compiled into production assets, so prioritize a simple silhouette, strong contrast, and recognition at very small sizes. Produce finished visual artwork, not a technical diagram or UI-flow illustration.
 
 ## Product context
 
-${description || 'No product description was provided. Do not invent domain-specific features; use a neutral, ownable symbol that can be refined after the product context is supplied.'}
+${description || 'No product description was provided. Treat any result as exploratory and do not imply that an inferred visual direction is approved.'}
 
 ## Deliverable
 
-- Preferred: one self-contained square SVG with a 1024 x 1024 viewBox.
-- Accepted fallback: one square PNG at least 1024 x 1024 pixels.
-${variantDeliverables || ''}
-- Use vector shapes and embedded fills/strokes. Do not use remote fonts, linked images, scripts, or event handlers.
-- Do not include explanatory text, mockups, device frames, drop shadows outside the canvas, or multiple icon candidates in the final asset.
-- Avoid words and fine lettering unless a letterform is essential to the product identity.
-- Suggested palette from the project: ${colors || 'choose a high-contrast palette appropriate to the product'}.
+${deliverableLines.join('\n')}
 
 ## Target requirements
 
@@ -81,7 +80,7 @@ function makeDesignBrief(inputConfig = null, opts = {}) {
   const targets = resolveTargets(opts.targets || [], cwd, config.targets);
   return {
     ok: true,
-    kind: 'design-brief',
+    kind: 'source-request',
     cwd,
     targets,
     project: {
@@ -89,12 +88,8 @@ function makeDesignBrief(inputConfig = null, opts = {}) {
       slug: config.project?.slug || path.basename(cwd),
       description: config.project?.description || config.project?.purpose || null,
     },
-    sourceContract: {
-      preferred: 'svg',
-      accepted: ['svg', 'png'],
-      minimumRasterSize: 1024,
-      variants: targets.includes('expo') ? ['default', 'adaptiveForeground'] : ['default'],
-    },
+    sourceContract: sourceContract(targets),
+    workflow: sourceAcquisitionWorkflow(targets),
     prompt: renderDesignBrief(config, targets),
   };
 }

@@ -7,9 +7,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
-- Added a provider-neutral `--brief` workflow for requesting a master icon from
-  a vanilla chat or any other human/design source without requiring plugins,
-  MCP servers, accounts, or network calls.
+- Added a provider-neutral `--brief` source request with machine-readable
+  `generate-image`, provider-boundary, source-contract, and approval metadata.
+  The offline CLI still requires no plugin, account, or network call.
+- Added explicit `--placeholder` mode for deterministic temporary artwork.
 - Added `--source <path>` for compiling a project-local SVG or PNG directly,
   including source metadata and raster upscaling warnings in JSON results.
 - Added `--adaptive-source` and `mark.source.adaptiveForeground` for supplying
@@ -20,6 +21,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   `apple.assetCatalog` / `apple.appIconSet` routing for ambiguous projects.
 
 ### Changed
+- Missing approved source artwork is now a usage error. The built-in geometric
+  mark is no longer an implicit fallback when `mark.source` is absent.
+- The agent skill now uses an available image-generation provider only when
+  source acquisition was requested, presents the candidate for approval, and
+  forbids hand-authored SVG synthesis as a fallback.
+- Image-generation handoff now prefers a 1024px PNG; SVG remains accepted when
+  it is native vector artwork from a trusted source.
 - Added packed-install smoke coverage so CI verifies the packed tarball inside a
   fresh consumer project through both the CLI and programmatic API.
 - Clarified pre-release local/source-checkout usage before npm publication.

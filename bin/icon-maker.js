@@ -16,7 +16,7 @@ const directStdoutWrite = process.stdout.write.bind(process.stdout);
 function writeResult(opts, result) {
   if (opts.json) directStdoutWrite(`${JSON.stringify(result)}\n`);
   else if (result.ok) {
-    if (result.kind === 'design-brief') {
+    if (result.kind === 'source-request') {
       directStdoutWrite(result.prompt.endsWith('\n') ? result.prompt : `${result.prompt}\n`);
       return;
     }
@@ -69,6 +69,7 @@ async function main() {
     config: opts.config,
     source: opts.source,
     adaptiveSource: opts.adaptiveSource,
+    placeholder: opts.placeholder,
     targets: opts.targets,
     outDir: opts.outDir,
     patch: opts.patch,

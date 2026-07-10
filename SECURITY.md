@@ -18,6 +18,12 @@ call external image services, read credentials, or make network requests at
 runtime. Use `--patch` only when you want it to update known icon fields in
 local project manifests.
 
+The optional agent workflow may call an image-generation provider outside the
+CLI. Provider credentials, retention, and content policies belong to that
+external tool. Generated candidates must be reviewed before being placed in a
+target checkout and passed to icon-maker. Missing source is an error unless
+temporary artwork was explicitly requested with `--placeholder`.
+
 Config files are loaded from the target directory. An `icon-maker.config.json`
 is parsed as data only and never executed. An `icon-maker.config.js` is executed
 as Node.js code, so it can do anything Node can — treat it like any script you

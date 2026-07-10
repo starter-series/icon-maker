@@ -26,51 +26,55 @@ Xcode Asset Catalog · 앱 아이콘 · 확장 manifest · package 아이콘 · 
   `iconkit`은 npm에 publish되지 않았습니다. 아래 명령은
   로컬 개발 경로와 npm 릴리즈 이후 설치 경로를 분리합니다.
 - **현재 구현됨** — 특정 디자인 공급자에 종속되지 않는 배포용 아이콘
-  컴파일러입니다. 바닐라 채팅용 디자인 brief, SVG/PNG 직접 전달, Xcode용
-  Apple AppIcon catalog, `apple`, `browser-extension`, `expo`, `electron`,
+  컴파일러입니다. 구조화된 이미지 생성/source 요청, 명시적 승인 단계,
+  SVG/PNG 직접 전달, Xcode용 Apple AppIcon catalog, `apple`,
+  `browser-extension`, `expo`, `electron`,
   `vscode`, `pwa`, `mcp-connector`, `generic` target, ICO/ICNS, preview,
   target 자동 감지, JSON 출력, 선택적 manifest/package patch를 지원합니다.
 - **설계 의도** — 아이콘 의도는 프로젝트별 결정이므로 `icon-maker.config.js` 또는 데이터 전용 `icon-maker.config.json`에 둡니다. 플랫폼별 파일명과 manifest 연결은 도구가 기계적으로 처리합니다.
-- **하지 않기로 한 것** — AI 로고 생성, 브랜딩 전략, 맞춤 일러스트를
-  직접 소유하지 않습니다. 사람, 바닐라 ChatGPT/Claude, 코딩 에이전트,
-  디자인 도구 어디에서든 SVG/PNG를 받아 동일하게 컴파일합니다.
+- **하지 않기로 한 것** — 오프라인 CLI는 AI 로고 생성, 브랜딩 전략,
+  맞춤 일러스트를 직접 소유하지 않습니다. 에이전트는 상류에서 사용 가능한
+  이미지 모델을 호출할 수 있지만, 승인된 프로젝트 로컬 SVG/PNG만
+  컴파일러에 전달합니다.
 
 ## 로컬 사용
 
 ```bash
 npm install
 node bin/icon-maker.js --brief --target apple,browser-extension,pwa
-node bin/icon-maker.js --target auto --dry-run --json
-node bin/icon-maker.js --target generic --out-dir .tmp-icon-preview --preview --json
+node bin/icon-maker.js --placeholder --target auto --dry-run --json
+node bin/icon-maker.js --placeholder --target generic --out-dir .tmp-icon-preview --preview --json
 rm -rf .tmp-icon-preview
 ```
 
-brief 명령은 파일을 쓰지 않고 디자인 요청문을 출력합니다. dry run은 target
-detection을 확인하고, 마지막 명령은 임시 출력 디렉터리에서 생성, preview,
-JSON contract를 검증해 저장소 루트를 오염시키지 않습니다.
+brief 명령은 파일을 쓰지 않고 상류 이미지 생성/source 요청을 출력합니다.
+나머지 명령은 임시 artwork임을 `--placeholder`로 명시한 뒤 target detection,
+preview, JSON contract를 검증합니다.
 
 ## npm 릴리즈 이후
 
 ```bash
 npm i -D iconkit
-npx iconkit --target auto --json
+npx iconkit --source ./brand/icon.png --target auto --json
 ```
 
 ## 설정
 
-### 바닐라 ChatGPT/Claude에서 디자인 받기
+### 이미지 생성 모델에서 source 받기
 
-먼저 특정 AI나 플러그인에 종속되지 않는 디자인 요청문을 생성합니다.
+먼저 상류 이미지 모델이나 디자인 공급자에 전달할 구조화된 요청을 생성합니다.
 
 ```bash
 node bin/icon-maker.js --brief --target apple,browser-extension,pwa
 ```
 
-출력된 요청문을 바닐라 채팅이나 디자이너에게 전달합니다. 받은 SVG 또는
-PNG를 대상 프로젝트 안에 둔 다음, 설정 파일 없이 바로 컴파일할 수 있습니다.
+에이전트 환경에서는 create-icons skill이 사용 가능한 이미지 생성 도구에 이
+요청을 전달하고, 후보 이미지를 보여준 뒤 명시적 승인을 기다립니다. CLI 자체는
+오프라인이며 모델을 호출하지 않습니다. 승인된 PNG를 프로젝트 안에서 바로
+컴파일합니다.
 
 ```bash
-node bin/icon-maker.js --source ./brand/icon.svg \
+node bin/icon-maker.js --source ./brand/icon.png \
   --target apple,browser-extension,pwa \
   --preview --json
 ```
@@ -78,7 +82,7 @@ node bin/icon-maker.js --source ./brand/icon.svg \
 `icon-preview.html`을 확인한 뒤 manifest/package 연결을 별도 실행합니다.
 
 ```bash
-node bin/icon-maker.js --source ./brand/icon.svg \
+node bin/icon-maker.js --source ./brand/icon.png \
   --target apple,browser-extension,pwa \
   --patch --json
 ```
@@ -86,15 +90,19 @@ node bin/icon-maker.js --source ./brand/icon.svg \
 npm 공개 이후에는 `node bin/icon-maker.js` 대신 `npx iconkit`을 사용합니다.
 
 `--source`는 대상 프로젝트를 기준으로 해석되며 그 디렉터리 밖의 파일은
-거부합니다. SVG를 권장하고, PNG는 정사각형 1024×1024 이상을 권장합니다.
-더 작거나 정사각형이 아닌 PNG에는 구조화된 경고가 반환됩니다. `--out-dir`도
-대상 프로젝트 안에서만 사용할 수 있습니다.
+거부합니다. 이미지 생성 결과는 정사각형 1024×1024 이상 PNG를 권장하고,
+디자인 도구가 만든 native vector SVG도 허용합니다. 더 작거나 정사각형이 아닌
+PNG에는 구조화된 경고가 반환됩니다. `--out-dir`도 대상 프로젝트 안에서만
+사용할 수 있습니다.
+
+승인된 source 없이 컴파일하면 오류로 중단합니다. 결정론적 임시 artwork가
+필요할 때만 `--placeholder`를 명시하며, 결과에도 경고가 포함됩니다.
 
 Expo 기본 원본이 불투명하다면 투명 adaptive foreground를 별도로 지정합니다.
 
 ```bash
-node bin/icon-maker.js --source ./brand/icon.svg \
-  --adaptive-source ./brand/icon-adaptive.svg \
+node bin/icon-maker.js --source ./brand/icon.png \
+  --adaptive-source ./brand/icon-adaptive.png \
   --target expo --preview --json
 ```
 
@@ -109,18 +117,14 @@ module.exports = {
     slug: 'my-app',
     description: '제품이 누구를 위해 어떤 일을 하는지',
   },
+  placeholder: false,
   mark: {
-    glyph: 'braces',       // braces | spark | bolt
-    shape: 'squircle',     // squircle | circle | square
+    source: {
+      default: './brand/icon.png',
+      adaptiveForeground: './brand/icon-adaptive.png',
+    },
+    // 투명 원본을 Apple용으로 flatten할 때 사용:
     background: '#111827',
-    foreground: '#f8fafc',
-    accent: '#38bdf8',
-    radius: 0.24,
-    // 완성된 원본을 사용할 때:
-    // source: {
-    //   default: './brand/icon.svg',
-    //   adaptiveForeground: './brand/icon-adaptive.svg',
-    // },
   },
   // Xcode 경로가 모호하거나 새 set이 필요할 때만 명시:
   // apple: {
@@ -130,6 +134,10 @@ module.exports = {
   targets: ['auto'],
 };
 ```
+
+starter용 임시 artwork는 `placeholder: true`를 명시한 뒤 `mark.glyph`,
+`shape`, 색상을 설정합니다. `mark.source`가 없다는 이유만으로 placeholder
+mode가 자동 선택되지는 않습니다.
 
 신뢰하지 않는 target checkout에서는 `icon-maker.config.json`을 권장합니다.
 자동 탐지는 JSON 설정을 먼저 읽고, target repo의 `icon-maker.config.js`는
@@ -197,13 +205,15 @@ module.exports = {
 
 ## Agent Surfaces
 
-- 현재 source checkout: `node /path/to/icon-maker/bin/icon-maker.js <path> --target auto --json`
-- 바닐라 전달: `node /path/to/icon-maker/bin/icon-maker.js <path> --brief --target apple,pwa`
-- npm 릴리즈 이후 공개 CLI: `npx iconkit <path> --target auto --json`
+- 현재 source checkout: `node /path/to/icon-maker/bin/icon-maker.js <path> --source ./brand/icon.png --target auto --json`
+- 상류 source 요청: `node /path/to/icon-maker/bin/icon-maker.js <path> --brief --target apple,pwa --json`
+- npm 릴리즈 이후 공개 CLI: `npx iconkit <path> --source ./brand/icon.png --target auto --json`
 - Skill: [`skills/create-icons/SKILL.md`](skills/create-icons/SKILL.md)
 - Source plugin metadata: [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json)
 
-v1에는 MCP 서버를 넣지 않았습니다. 아이콘 생성은 파일을 쓰는 로컬 작업이라 `--json` CLI와 skill 조합이 더 단순하고 안정적입니다.
+v1에는 MCP 서버를 넣지 않았습니다. 오프라인 JSON CLI와, 사용 가능한 이미지
+공급자에서 후보를 받은 뒤 승인 이후에만 컴파일러를 호출하는 skill 조합을
+사용합니다.
 
 ## 개발
 

@@ -39,6 +39,7 @@ function defaultConfig(cwd = process.cwd(), targets = ['auto']) {
   if (pkg.description) project.description = String(pkg.description);
   return {
     project,
+    placeholder: false,
     mark: {
       ...markPresetForTargets(resolvedTargets),
       radius: 0.24,
@@ -112,6 +113,8 @@ function renderDefaultConfig(cwd = process.cwd(), targets = ['auto']) {
   const config = defaultConfig(cwd, targets);
   return `module.exports = {
   project: ${JSON.stringify(config.project, null, 2).replace(/\n/g, '\n  ')},
+  // Set true only when deterministic temporary artwork is intentional:
+  placeholder: false,
   mark: {
     // glyph: 'braces' | 'spark' | 'bolt'
     glyph: ${JSON.stringify(config.mark.glyph)},
@@ -121,8 +124,8 @@ function renderDefaultConfig(cwd = process.cwd(), targets = ['auto']) {
     foreground: ${JSON.stringify(config.mark.foreground)},
     accent: ${JSON.stringify(config.mark.accent)},
     radius: ${JSON.stringify(config.mark.radius)},
-    // Use finished sources instead of the generated mark:
-    // source: { default: './brand/icon.svg', adaptiveForeground: './brand/icon-adaptive.svg' },
+    // Approved source artwork:
+    // source: { default: './brand/icon.png', adaptiveForeground: './brand/icon-adaptive.png' },
   },
   // When Xcode routing is ambiguous, select the catalog and App Icon set:
   // apple: { assetCatalog: './MyApp/Assets.xcassets', appIconSet: 'AppIcon' },

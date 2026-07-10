@@ -51,6 +51,7 @@ try {
   fs.writeFileSync(
     path.join(consumer, 'icon-maker.config.js'),
     `module.exports = {
+  placeholder: true,
   project: { name: 'Pack Smoke', slug: 'pack-smoke' },
   mark: {
     glyph: 'spark',
@@ -72,8 +73,10 @@ try {
     { cwd: consumer },
   );
   const briefJson = parseJson(briefResult.stdout, 'icon-maker design brief');
-  assert.equal(briefJson.kind, 'design-brief');
+  assert.equal(briefJson.kind, 'source-request');
   assert.deepEqual(briefJson.targets, ['apple', 'pwa']);
+  assert.equal(briefJson.workflow.nextAction, 'generate-image');
+  assert.equal(briefJson.workflow.approvalRequired, true);
   assert.match(briefJson.prompt, /Xcode/);
 
   const cliResult = run(
@@ -83,6 +86,7 @@ try {
   );
   const cliJson = parseJson(cliResult.stdout, 'icon-maker CLI');
   assert.equal(cliJson.ok, true);
+  assert.equal(cliJson.sourceMode, 'placeholder');
   assert.deepEqual(cliJson.targets, ['generic']);
   assert.ok(cliJson.produced.length >= 2, 'CLI produced no icon files');
   const realConsumerOut = fs.realpathSync(path.join(consumer, 'out'));
@@ -126,6 +130,7 @@ const { makeIcons } = require('iconkit');
 const cwd = path.resolve('api-consumer');
 fs.mkdirSync(cwd, { recursive: true });
 const result = makeIcons({
+  placeholder: true,
   project: { name: 'API Smoke', slug: 'api-smoke' },
   mark: {
     glyph: 'bolt',
