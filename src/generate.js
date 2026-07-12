@@ -255,7 +255,7 @@ function prepareAppleContext(cwd, opts, config, warnings, discovery) {
   return { appIconSet, catalog, contents };
 }
 
-function makeIcons(inputConfig = null, opts = {}) {
+function prepareCompileContext(inputConfig, opts) {
   const cwd = path.resolve(opts.cwd || process.cwd());
   const presetTargets = opts.targets?.length ? opts.targets : inputConfig?.targets || [];
   const loaded = inputConfig
@@ -292,9 +292,21 @@ function makeIcons(inputConfig = null, opts = {}) {
   }
   const targetContexts = new Map();
   if (targets.includes('apple')) targetContexts.set('apple', prepareAppleContext(cwd, opts, config, warnings, discovery));
-  const render = createRenderer(config, sources);
-  const produced = [];
-  const write = opts.write !== false;
+  return {
+    cwd,
+    opts,
+    config,
+    targets,
+    warnings,
+    sources,
+    sourceMode,
+    targetContexts,
+    write: opts.write !== false,
+  };
+}
+
+function buildOutputPlan(context) {
+  const { cwd, opts, sources, targetContexts, targets, write } = context;
   const plans = [];
 
   for (const target of targets) {
@@ -327,7 +339,11 @@ function makeIcons(inputConfig = null, opts = {}) {
       }
     }
   }
+  return { plans, plannedPreview };
+}
 
+function renderOutputPlan(context, plans) {
+  const render = createRenderer(context.config, context.sources);
   const renderedPlans = plans.map((plan) => ({ ...plan, contents: contentBuffer(render(plan.effectiveFile)) }));
   const outputsByPath = new Map();
   for (const plan of renderedPlans) {
@@ -342,7 +358,12 @@ function makeIcons(inputConfig = null, opts = {}) {
     }
     if (!previous) outputsByPath.set(plan.absolutePath, plan);
   }
+  return renderedPlans;
+}
 
+function writeOutputPlan(context, renderedPlans, plannedPreview) {
+  const { config, cwd, opts, targets, warnings, write } = context;
+  const produced = [];
   for (const plan of renderedPlans) {
     const written = write ? writeFileIfChanged(plan.absolutePath, plan.contents) : false;
     produced.push({
@@ -363,17 +384,25 @@ function makeIcons(inputConfig = null, opts = {}) {
     const written = writeFileIfChanged(plannedPreview, renderPreviewHtml(cwd, plannedPreview, config, produced));
     preview = { path: plannedPreview, format: 'html', written };
   }
+  return { produced, patches, preview };
+}
+
+function makeIcons(inputConfig = null, opts = {}) {
+  const context = prepareCompileContext(inputConfig, opts);
+  const { plans, plannedPreview } = buildOutputPlan(context);
+  const renderedPlans = renderOutputPlan(context, plans);
+  const { produced, patches, preview } = writeOutputPlan(context, renderedPlans, plannedPreview);
   return {
     ok: true,
-    cwd,
-    targets,
-    sourceMode,
-    source: sourceSummary(sources.default),
-    sourceVariants: { adaptiveForeground: sourceSummary(sources.adaptiveForeground) },
+    cwd: context.cwd,
+    targets: context.targets,
+    sourceMode: context.sourceMode,
+    source: sourceSummary(context.sources.default),
+    sourceVariants: { adaptiveForeground: sourceSummary(context.sources.adaptiveForeground) },
     produced,
     patches,
     preview,
-    warnings,
+    warnings: context.warnings,
   };
 }
 
