@@ -54,8 +54,41 @@ function readOptionValue(argv, index, option) {
   return value;
 }
 
-function parseArgs(argv) {
-  const opts = {
+const VALUE_OPTIONS = {
+  '--target': { key: 'targets', append: true, parse: splitOptionList },
+  '--config': { key: 'config' },
+  '--source': { key: 'source' },
+  '--adaptive-source': { key: 'adaptiveSource' },
+  '--out-dir': { key: 'outDir' },
+  '--direction-name': { key: 'directionName' },
+  '--concept': { key: 'concept' },
+  '--expresses': { key: 'expresses' },
+  '--visual-metaphor': { key: 'visualMetaphor' },
+  '--mood': { key: 'mood' },
+  '--tradeoff': { key: 'tradeoff' },
+  '--palette': { key: 'palette' },
+  '--avoid': { key: 'avoid' },
+};
+
+const FLAG_OPTIONS = {
+  '--patch': 'patch',
+  '--preview': 'preview',
+  '--dry-run': 'dryRun',
+  '--init': 'init',
+  '--brief': 'brief',
+  '--approve-direction': 'approveDirection',
+  '--placeholder': 'placeholder',
+  '--json': 'json',
+  '-h': 'help',
+  '--help': 'help',
+};
+
+function splitOptionList(value) {
+  return String(value).split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function defaultOptions() {
+  return {
     targets: [],
     config: null,
     source: null,
@@ -80,61 +113,31 @@ function parseArgs(argv) {
     help: false,
     path: null,
   };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--target') {
-      opts.targets.push(...String(readOptionValue(argv, i, arg)).split(',').map((value) => value.trim()).filter(Boolean));
-      i++;
-    } else if (arg === '--config') {
-      opts.config = readOptionValue(argv, i, arg);
-      i++;
-    } else if (arg === '--source') {
-      opts.source = readOptionValue(argv, i, arg);
-      i++;
-    } else if (arg === '--adaptive-source') {
-      opts.adaptiveSource = readOptionValue(argv, i, arg);
-      i++;
-    } else if (arg === '--out-dir') {
-      opts.outDir = readOptionValue(argv, i, arg);
-      i++;
-    } else if (arg === '--direction-name') {
-      opts.directionName = readOptionValue(argv, i, arg);
-      i++;
-    } else if (arg === '--concept') {
-      opts.concept = readOptionValue(argv, i, arg);
-      i++;
-    } else if (arg === '--expresses') {
-      opts.expresses = readOptionValue(argv, i, arg);
-      i++;
-    } else if (arg === '--visual-metaphor') {
-      opts.visualMetaphor = readOptionValue(argv, i, arg);
-      i++;
-    } else if (arg === '--mood') {
-      opts.mood = readOptionValue(argv, i, arg);
-      i++;
-    } else if (arg === '--tradeoff') {
-      opts.tradeoff = readOptionValue(argv, i, arg);
-      i++;
-    } else if (arg === '--palette') {
-      opts.palette = readOptionValue(argv, i, arg);
-      i++;
-    } else if (arg === '--avoid') {
-      opts.avoid = readOptionValue(argv, i, arg);
-      i++;
-    }
-    else if (arg === '--patch') opts.patch = true;
-    else if (arg === '--preview') opts.preview = true;
-    else if (arg === '--dry-run') opts.dryRun = true;
-    else if (arg === '--init') opts.init = true;
-    else if (arg === '--brief') opts.brief = true;
-    else if (arg === '--approve-direction') opts.approveDirection = true;
-    else if (arg === '--placeholder') opts.placeholder = true;
-    else if (arg === '--json') opts.json = true;
-    else if (arg === '-h' || arg === '--help') opts.help = true;
-    else if (!arg.startsWith('-') && opts.path === null) opts.path = arg;
-    else if (arg.startsWith('-')) throw usageError(`Unknown option: ${arg}`);
-    else throw usageError(`Unexpected positional argument: ${arg}`);
+}
+
+function parseOption(argv, index, opts) {
+  const option = argv[index];
+  const valueDefinition = Object.hasOwn(VALUE_OPTIONS, option) ? VALUE_OPTIONS[option] : null;
+  if (valueDefinition) {
+    const raw = readOptionValue(argv, index, option);
+    const value = valueDefinition.parse ? valueDefinition.parse(raw) : raw;
+    if (valueDefinition.append) opts[valueDefinition.key].push(...value);
+    else opts[valueDefinition.key] = value;
+    return 1;
   }
+  const flagKey = Object.hasOwn(FLAG_OPTIONS, option) ? FLAG_OPTIONS[option] : null;
+  if (flagKey) {
+    opts[flagKey] = true;
+    return 0;
+  }
+  return null;
+}
+
+function hasAnyOption(opts, keys) {
+  return keys.some((key) => Boolean(opts[key]));
+}
+
+function validateOptionCombinations(opts) {
   if (opts.brief && opts.init) throw usageError('--brief cannot be combined with --init');
   if (opts.brief && opts.source) throw usageError('--brief cannot be combined with --source');
   if (opts.brief && opts.adaptiveSource) throw usageError('--brief cannot be combined with --adaptive-source');
@@ -147,9 +150,31 @@ function parseArgs(argv) {
   if (opts.brief && (opts.patch || opts.preview || opts.dryRun || opts.outDir || opts.placeholder)) {
     throw usageError('--brief cannot be combined with compile output options');
   }
-  const hasDirectionOptions = opts.directionName || opts.concept || opts.expresses || opts.visualMetaphor
-    || opts.mood || opts.tradeoff || opts.palette || opts.avoid || opts.approveDirection;
-  if (hasDirectionOptions && !opts.brief) throw usageError('direction options require --brief');
+  const directionKeys = [
+    'directionName',
+    'concept',
+    'expresses',
+    'visualMetaphor',
+    'mood',
+    'tradeoff',
+    'palette',
+    'avoid',
+    'approveDirection',
+  ];
+  if (hasAnyOption(opts, directionKeys) && !opts.brief) throw usageError('direction options require --brief');
+}
+
+function parseArgs(argv) {
+  const opts = defaultOptions();
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    const consumed = parseOption(argv, i, opts);
+    if (consumed !== null) i += consumed;
+    else if (!arg.startsWith('-') && opts.path === null) opts.path = arg;
+    else if (arg.startsWith('-')) throw usageError(`Unknown option: ${arg}`);
+    else throw usageError(`Unexpected positional argument: ${arg}`);
+  }
+  validateOptionCombinations(opts);
   return opts;
 }
 

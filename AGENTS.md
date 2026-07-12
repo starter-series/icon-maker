@@ -93,7 +93,7 @@ node bin/icon-maker.js --brief --target apple,pwa \
 
 ```
 src/
-  generate.js  -> makeIcons(config, opts): target resolution, SVG/PNG/ICO/ICNS writes, optional patches/preview
+  generate.js  -> prepare/plan/render/write pipeline composed by makeIcons(config, opts)
   targets.js   -> target definitions and repo autodetection
   apple.js     -> Xcode project/catalog discovery and safe Apple output routing
   brand.js     -> bounded local brand-asset, guidance, and palette evidence discovery

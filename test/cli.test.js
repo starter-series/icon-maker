@@ -61,6 +61,7 @@ describe('cli args', () => {
 
   test('rejects unknown options and missing option values as usage errors', () => {
     assert.throws(() => parseArgs(['--unknown']), { exitCode: 2, message: /Unknown option/ });
+    assert.throws(() => parseArgs(['--constructor']), { exitCode: 2, message: /Unknown option/ });
     assert.throws(() => parseArgs(['--target']), { exitCode: 2, message: /--target requires a value/ });
     assert.throws(() => parseArgs(['one', 'two']), { exitCode: 2, message: /Unexpected positional argument/ });
     assert.throws(() => parseArgs(['--brief', '--source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });

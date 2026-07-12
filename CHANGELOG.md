@@ -27,6 +27,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   `apple.assetCatalog` / `apple.appIconSet` routing for ambiguous projects.
 
 ### Changed
+- Split icon compilation into explicit prepare, output-plan, render, and write
+  phases while preserving the all-render-and-validate-before-write invariant.
+- Centralized source/output containment and real-file identity checks in one
+  path-safety policy shared by generation, source loading, and Apple routing.
+- Replaced the CLI parser's option branch chain with value/flag definitions and
+  an isolated option-combination validator.
 - Missing approved source artwork is now a usage error. The built-in geometric
   mark is no longer an implicit fallback when `mark.source` is absent.
 - The agent skill now blocks image generation while direction is missing or
