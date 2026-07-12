@@ -103,6 +103,7 @@ src/
   png.js       -> tiny RGBA PNG encoder/rasterizer using Node zlib
   svg.js       -> SVG source renderer from the same primitives
   source.js    -> custom SVG/PNG source loading + resvg rasterization
+  path-safety.js -> shared checkout containment and real-file identity policy
   containers.js -> PNG-backed ICO/ICNS encoders
   preview.js   -> icon-preview.html contact sheet renderer
   patch.js     -> manifest/app/package icon field patchers

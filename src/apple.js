@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { assertContainedOutputPath } = require('./path-safety');
 
 const SKIP_DIRECTORIES = new Set([
   '.git',
@@ -15,11 +16,6 @@ const SKIP_DIRECTORIES = new Set([
   'target',
   'vendor',
 ]);
-
-function isInsideDirectory(root, candidate) {
-  const relative = path.relative(root, candidate);
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-}
 
 function scanAppleProject(cwd, maxDepth = 5) {
   const catalogs = [];
@@ -66,22 +62,6 @@ function hasAppleProject(cwd, context) {
   return scanned.catalogs.length > 0 || scanned.projects.length > 0;
 }
 
-function assertContainedOutput(cwd, candidate) {
-  const root = fs.realpathSync(cwd);
-  let existing = candidate;
-  while (!fs.existsSync(existing)) {
-    const parent = path.dirname(existing);
-    if (parent === existing) break;
-    existing = parent;
-  }
-  const realExisting = fs.realpathSync(existing);
-  if (!isInsideDirectory(root, realExisting)) {
-    const err = new Error(`icon-maker: apple.assetCatalog must stay inside the target directory: ${candidate}`);
-    err.exitCode = 2;
-    throw err;
-  }
-}
-
 function explicitAssetCatalog(cwd, configured) {
   if (typeof configured !== 'string' || !configured.trim()) {
     const err = new Error('apple.assetCatalog must be a non-empty path');
@@ -99,7 +79,7 @@ function explicitAssetCatalog(cwd, configured) {
     err.exitCode = 2;
     throw err;
   }
-  assertContainedOutput(cwd, candidate);
+  assertContainedOutputPath(cwd, candidate, 'apple.assetCatalog');
   return candidate;
 }
 
@@ -127,7 +107,7 @@ function resolveAppleAssetCatalog(cwd, config, warnings = [], scanned = null) {
   }
 
   const fallback = path.join(cwd, 'Assets.xcassets');
-  assertContainedOutput(cwd, fallback);
+  assertContainedOutputPath(cwd, fallback, 'apple.assetCatalog');
   warnings.push({
     code: 'apple-catalog-created',
     message: `no Xcode asset catalog was found; writing ${path.relative(cwd, fallback)} (add it to the Xcode project if needed)`,

@@ -10,6 +10,7 @@ const { parseHexColor, toHex } = require('./color');
 const { encodeIco, encodeIcns } = require('./containers');
 const { defaultConfig, loadConfig, mergeConfig, validateConfig } = require('./config');
 const { encodePng, encodeRgbPng, rasterizePrimitives, resizeRgba } = require('./png');
+const { assertContainedOutputPath, sameRealFile } = require('./path-safety');
 const { renderPreviewHtml } = require('./preview');
 const { loadSource, renderSourceToPixels, renderSourceToPng, renderSourceToSvg } = require('./source');
 const { renderSvg } = require('./svg');
@@ -20,40 +21,6 @@ const { resolveSourceMode } = require('./workflow');
 
 function ensureDir(file) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-}
-
-function isInsideDirectory(root, candidate) {
-  const relative = path.relative(root, candidate);
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-}
-
-function assertSafeOutputPath(cwd, candidate) {
-  const logicalRoot = path.resolve(cwd);
-  const logicalCandidate = path.resolve(candidate);
-  if (!isInsideDirectory(logicalRoot, logicalCandidate)) {
-    const err = new Error(`icon-maker: output path must stay inside the target directory: ${logicalCandidate}`);
-    err.exitCode = 2;
-    throw err;
-  }
-  const realRoot = fs.realpathSync(logicalRoot);
-  let existing = logicalCandidate;
-  while (!fs.existsSync(existing)) {
-    const parent = path.dirname(existing);
-    if (parent === existing) break;
-    existing = parent;
-  }
-  if (!isInsideDirectory(realRoot, fs.realpathSync(existing))) {
-    const err = new Error(`icon-maker: output path resolves outside the target directory: ${logicalCandidate}`);
-    err.exitCode = 2;
-    throw err;
-  }
-}
-
-function sameFilePath(left, right) {
-  if (!left || !right) return false;
-  if (path.resolve(left) === path.resolve(right)) return true;
-  if (!fs.existsSync(left) || !fs.existsSync(right)) return false;
-  return fs.realpathSync(left) === fs.realpathSync(right);
 }
 
 function writeFileIfChanged(file, contents) {
@@ -249,7 +216,7 @@ function prepareAppleContext(cwd, opts, config, warnings, discovery) {
   const catalog = opts.outDir
     ? path.resolve(cwd, opts.outDir, 'apple', 'Assets.xcassets')
     : resolveAppleAssetCatalog(cwd, config, warnings, scanned);
-  assertSafeOutputPath(cwd, path.join(catalog, `${appIconSet}.appiconset`, 'Contents.json'));
+  assertContainedOutputPath(cwd, path.join(catalog, `${appIconSet}.appiconset`, 'Contents.json'));
   const generatedContents = TARGETS.apple.files.find((file) => file.format === 'json').contents;
   const contents = mergeAppleContents(catalog, appIconSet, generatedContents);
   return { appIconSet, catalog, contents };
@@ -316,9 +283,9 @@ function buildOutputPlan(context) {
         ? { ...file, contents: targetContexts.get('apple').contents }
         : file;
       const absolutePath = outputPath(cwd, opts, target, file.path, targetContexts);
-      assertSafeOutputPath(cwd, absolutePath);
+      assertContainedOutputPath(cwd, absolutePath);
       for (const source of Object.values(sources)) {
-        if (source && sameFilePath(source.path, absolutePath)) {
+        if (source && sameRealFile(source.path, absolutePath)) {
           const err = new Error(`icon-maker: refusing to overwrite source file with generated output: ${absolutePath}`);
           err.exitCode = 2;
           throw err;
@@ -330,9 +297,9 @@ function buildOutputPlan(context) {
 
   const plannedPreview = write && opts.preview ? previewPath(cwd, opts) : null;
   if (plannedPreview) {
-    assertSafeOutputPath(cwd, plannedPreview);
+    assertContainedOutputPath(cwd, plannedPreview);
     for (const source of Object.values(sources)) {
-      if (source && sameFilePath(source.path, plannedPreview)) {
+      if (source && sameRealFile(source.path, plannedPreview)) {
         const err = new Error(`icon-maker: refusing to overwrite source file with preview output: ${plannedPreview}`);
         err.exitCode = 2;
         throw err;

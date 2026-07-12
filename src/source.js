@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { toHex } = require('./color');
+const { assertContainedExistingPath } = require('./path-safety');
 const { PNG_SIGNATURE, unpremultiplyRgba } = require('./png');
 
 function sourcePathFromConfig(config, role = 'default') {
@@ -11,19 +12,9 @@ function sourcePathFromConfig(config, role = 'default') {
   return source.default || source.path || source.svg || source.png || null;
 }
 
-function isInsideDirectory(root, candidate) {
-  const relative = path.relative(root, candidate);
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-}
-
 function resolveSourcePath(cwd, sourcePath) {
-  const root = fs.realpathSync(cwd);
   const absolutePath = path.resolve(cwd, sourcePath);
-  const realPath = fs.realpathSync(absolutePath);
-  if (!isInsideDirectory(root, realPath)) {
-    throw new Error(`icon-maker: mark.source must stay inside the target directory: ${absolutePath}`);
-  }
-  return realPath;
+  return assertContainedExistingPath(cwd, absolutePath, 'mark.source');
 }
 
 function pngDimensions(buffer, absolutePath) {
