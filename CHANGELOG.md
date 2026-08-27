@@ -89,6 +89,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   current, preserving Xcode and other incremental-build timestamps.
 
 ### Fixed
+- Keep the exclusive writable staging handle open through write and fsync;
+  reopening it read-only caused every transaction to fail on Windows.
 - Validate original PNG/SVG source data before embedding it, preventing invalid
   nested images from silently producing blank icons. Check SVG document parsing,
   Apple slot metadata, and Icon Composer PNG/SVG layer data as well as filenames.

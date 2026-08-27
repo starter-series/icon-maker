@@ -30,13 +30,15 @@ npm 최초 발행은 이번 검수 범위에서 제외합니다.
 - Icon Composer layer의 존재만 확인하여 손상된 PNG/SVG를 통과시키던 문제.
 - brief JSON에 선택적 maskable/round/monochrome 역할이 빠져 있던 계약 누락.
 - maintenance CI를 실패시키던 개발용 transitive `brace-expansion` 취약점.
+- Windows에서 읽기 전용 staging 핸들을 fsync해 모든 쓰기가 실패하던 문제.
+  exclusive 쓰기 핸들을 생성부터 flush까지 유지하도록 수정했습니다.
 
 각 동작 결함은 기존 테스트 파일에 회귀 사례를 추가하거나 확장해 검증합니다.
 외부 builder 설정 선택은 [electron-builder의 config loader](https://github.com/electron-userland/electron-builder/blob/master/packages/app-builder-lib/src/util/config/load.ts)를 확인했습니다.
 
 ## 검증 범위와 한계
 
-- lint 및 전체 테스트 190개 통과, packed-install CLI/API smoke 통과.
+- lint 및 전체 테스트 191개 통과, packed-install CLI/API smoke 통과.
 - Apple legacy 출력은 Xcode `actool`의 iphoneos/macOS 컴파일 통과.
 - 9개 타깃의 실제 CLI 생성·preview·지원 patch·`--check --strict` 통과.
   총 64개 산출물의 검사 오류·경고는 0이며, 재실행 시 산출물·preview·patch

@@ -108,12 +108,9 @@ function assertCurrentMatches(record) {
 function stageRecord(record) {
   ensureParentDirectories(record.root, record.path, record.createdDirectories);
   validateWritePath(record.root, record.path);
-  fs.writeFileSync(record.temporaryPath, record.contents, {
-    flag: 'wx',
-    mode: record.original.mode ?? 0o666,
-  });
-  const descriptor = fs.openSync(record.temporaryPath, 'r');
+  const descriptor = fs.openSync(record.temporaryPath, 'wx', record.original.mode ?? 0o666);
   try {
+    fs.writeFileSync(descriptor, record.contents);
     fs.fsyncSync(descriptor);
   } finally {
     fs.closeSync(descriptor);

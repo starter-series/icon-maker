@@ -23,6 +23,22 @@ function transactionArtifacts(cwd) {
 }
 
 describe('write transaction', () => {
+  test('flushes a writable staging descriptor before installing the file', (context) => {
+    const cwd = tempDir();
+    const file = path.join(cwd, 'output.txt');
+    const fsyncSync = fs.fsyncSync;
+    const flush = context.mock.method(fs, 'fsyncSync', (descriptor) => {
+      // Windows FlushFileBuffers requires a writable handle. Exercise that
+      // access mode on every platform instead of weakening fsync on Windows.
+      fs.writeSync(descriptor, Buffer.from('a'), 0, 1, 0);
+      fsyncSync(descriptor);
+    });
+    commitWriteTransaction(cwd, [{ path: file, contents: 'after' }]);
+    assert.equal(flush.mock.callCount(), 1);
+    assert.equal(fs.readFileSync(file, 'utf8'), 'after');
+    assert.deepEqual(transactionArtifacts(cwd), []);
+  });
+
   test('commits changed files through sibling temporary files and skips unchanged content', () => {
     const cwd = tempDir();
     const existing = path.join(cwd, 'existing.txt');

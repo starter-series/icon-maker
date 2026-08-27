@@ -451,7 +451,9 @@ describe('checkIcons', () => {
 
     const valid = checkIcons(placeholderConfig, { cwd, targets: ['android'] });
     assert.equal(valid.summary.errors, 0);
-    assert.ok(valid.checked.some((item) => item.path.includes('/app/src/main/res/mipmap-mdpi/')));
+    assert.ok(valid.checked.some((item) => item.path.includes(
+      `${path.join('app', 'src', 'main', 'res', 'mipmap-mdpi')}${path.sep}`,
+    )));
     assert.ok(valid.checked.some((item) => item.format === 'xml'));
 
     fs.writeFileSync(
