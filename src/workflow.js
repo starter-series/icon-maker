@@ -1,9 +1,15 @@
 function sourceContract(targets = []) {
+  const needsAdaptiveForeground = targets.includes('expo') || targets.includes('android');
+  const optionalVariants = [];
+  if (targets.includes('pwa')) optionalVariants.push('maskable');
+  if (targets.includes('android')) optionalVariants.push('round');
+  if (needsAdaptiveForeground || targets.includes('pwa')) optionalVariants.push('monochrome');
   return {
     preferred: 'png',
     accepted: ['png', 'svg'],
     minimumRasterSize: 1024,
-    variants: targets.includes('expo') ? ['default', 'adaptiveForeground'] : ['default'],
+    variants: needsAdaptiveForeground ? ['default', 'adaptiveForeground'] : ['default'],
+    optionalVariants,
   };
 }
 

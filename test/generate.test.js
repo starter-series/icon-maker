@@ -59,6 +59,8 @@ describe('makeIcons', () => {
   test('writes generic svg and png files', () => {
     const cwd = tempDir();
     const result = makeIcons(config, { cwd, targets: ['generic'] });
+    assert.equal(result.schemaVersion, 1);
+    assert.equal(result.kind, 'compile');
     assert.equal(result.ok, true);
     assert.equal(result.sourceMode, 'placeholder');
     assert.ok(result.warnings.some((warning) => warning.code === 'placeholder-source'));
@@ -123,6 +125,27 @@ describe('makeIcons', () => {
     assert.ok(result.warnings.some((warning) => warning.code === 'patch-target-missing'));
   });
 
+  test('blocks malformed JSON patch targets before committing icon outputs', () => {
+    const browserCwd = tempDir();
+    fs.writeFileSync(path.join(browserCwd, 'manifest.json'), '{broken');
+    assert.throws(
+      () => makeIcons(config, { cwd: browserCwd, targets: ['browser-extension'], patch: true }),
+      /could not parse/,
+    );
+    assert.equal(fs.existsSync(path.join(browserCwd, 'assets')), false);
+    assert.equal(fs.readFileSync(path.join(browserCwd, 'manifest.json'), 'utf8'), '{broken');
+
+    const expoCwd = tempDir();
+    fs.writeFileSync(path.join(expoCwd, 'app.json'), JSON.stringify({
+      expo: { android: { adaptiveIcon: 'dynamic-value' } },
+    }));
+    assert.throws(
+      () => makeIcons(config, { cwd: expoCwd, targets: ['expo'], patch: true }),
+      /adaptiveIcon must be a JSON object/,
+    );
+    assert.equal(fs.existsSync(path.join(expoCwd, 'assets')), false);
+  });
+
   test('preserves JSON indent and skips already-applied patches', () => {
     const cwd = tempDir();
     const manifestPath = path.join(cwd, 'manifest.json');
@@ -135,6 +158,44 @@ describe('makeIcons', () => {
     assert.equal(second.patches.length, 0);
   });
 
+  test('preserves CRLF line endings while patching JSON', () => {
+    const cwd = tempDir();
+    const manifestPath = path.join(cwd, 'manifest.json');
+    fs.writeFileSync(manifestPath, '{\r\n    "manifest_version": 3,\r\n    "name": "Demo"\r\n}\r\n');
+
+    makeIcons(config, { cwd, targets: ['browser-extension'], patch: true });
+    const patched = fs.readFileSync(manifestPath, 'utf8');
+    assert.equal(patched.includes('\r\n'), true);
+    assert.equal(patched.replace(/\r\n/g, '').includes('\n'), false);
+    assert.ok(patched.includes('\r\n    "icons": {'));
+  });
+
+  test('plans patches before committing any output and rejects an escaping patch symlink', {
+    skip: process.platform === 'win32',
+  }, () => {
+    const cwd = tempDir();
+    const outside = tempDir();
+    const externalManifest = path.join(outside, 'manifest.json');
+    fs.writeFileSync(externalManifest, JSON.stringify({ manifest_version: 3, name: 'Outside' }, null, 2));
+    fs.symlinkSync(externalManifest, path.join(cwd, 'manifest.json'), 'file');
+
+    assert.throws(
+      () => makeIcons(config, {
+        cwd,
+        targets: ['browser-extension'],
+        patch: true,
+        preview: true,
+      }),
+      { exitCode: 2, message: /patch target.*(resolves outside|symbolic link)/ },
+    );
+    assert.equal(fs.existsSync(path.join(cwd, 'assets')), false);
+    assert.equal(fs.existsSync(path.join(cwd, 'icon-preview.html')), false);
+    assert.deepEqual(JSON.parse(fs.readFileSync(externalManifest, 'utf8')), {
+      manifest_version: 3,
+      name: 'Outside',
+    });
+  });
+
   test('patches Expo app icon fields without rewriting unchanged JSON', () => {
     const cwd = tempDir();
     const appJsonPath = path.join(cwd, 'app.json');
@@ -145,6 +206,7 @@ describe('makeIcons', () => {
     const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
     assert.equal(appJson.expo.icon, './assets/icon.png');
     assert.equal(appJson.expo.android.adaptiveIcon.foregroundImage, './assets/adaptive-icon.png');
+    assert.equal(appJson.expo.android.adaptiveIcon.backgroundColor, '#101827');
 
     const patched = fs.readFileSync(appJsonPath, 'utf8');
     const second = makeIcons(config, { cwd, targets: ['expo'], patch: true });
@@ -152,14 +214,24 @@ describe('makeIcons', () => {
     assert.equal(fs.readFileSync(appJsonPath, 'utf8'), patched);
   });
 
-  test('patches package icon fields for app and editor package targets', () => {
+  test('patches real Electron packager fields and the VS Code package icon', () => {
     const cwd = tempDir();
     const pkgPath = path.join(cwd, 'package.json');
-    fs.writeFileSync(pkgPath, JSON.stringify({ name: 'demo', version: '0.0.0' }, null, 2));
+    fs.writeFileSync(pkgPath, JSON.stringify({
+      name: 'demo',
+      version: '0.0.0',
+      devDependencies: { 'electron-builder': '^26.0.0' },
+    }, null, 2));
 
     const electron = makeIcons(config, { cwd, targets: ['electron'], patch: true });
     assert.equal(electron.patches.length, 1);
-    assert.equal(JSON.parse(fs.readFileSync(pkgPath, 'utf8')).icon, 'assets/icon.png');
+    const electronPackage = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    assert.deepEqual(electronPackage.build, {
+      mac: { icon: 'assets/icon.icns' },
+      win: { icon: 'assets/icon.ico' },
+      linux: { icon: 'assets/icon.png' },
+    });
+    assert.equal(electronPackage.icon, undefined);
 
     const unchanged = makeIcons(config, { cwd, targets: ['electron'], patch: true });
     assert.equal(unchanged.patches.length, 0);
@@ -181,14 +253,95 @@ describe('makeIcons', () => {
     assert.equal(first.patches.length, 1);
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
     assert.deepEqual(manifest.icons, [
-      { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
     ]);
+    assert.equal(manifest.icons.some((entry) => entry.purpose === 'maskable'), false);
 
     const patched = fs.readFileSync(manifestPath, 'utf8');
     const second = makeIcons(config, { cwd, targets: ['pwa'], patch: true });
     assert.equal(second.patches.length, 0);
     assert.equal(fs.readFileSync(manifestPath, 'utf8'), patched);
+  });
+
+  test('routes PWA output beside a www manifest and wires only separately supplied icon roles', () => {
+    const cwd = tempDir();
+    const manifestPath = path.join(cwd, 'www', 'manifest.webmanifest');
+    fs.mkdirSync(path.dirname(manifestPath));
+    fs.writeFileSync(manifestPath, `${JSON.stringify({ name: 'Demo' }, null, 2)}\n`);
+    fs.mkdirSync(path.join(cwd, 'brand'));
+    for (const [name, body] of [
+      ['icon', '<rect width="64" height="64" fill="#123456"/>'],
+      ['maskable', '<circle cx="32" cy="32" r="28" fill="#abcdef"/>'],
+      ['monochrome', '<path d="M16 16h32v32H16z" fill="#000000"/>'],
+    ]) {
+      fs.writeFileSync(
+        path.join(cwd, 'brand', `${name}.svg`),
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">${body}</svg>`,
+      );
+    }
+    const pwaConfig = {
+      ...config,
+      placeholder: false,
+      pwa: { manifest: './www/manifest.webmanifest' },
+      mark: {
+        ...config.mark,
+        source: {
+          default: './brand/icon.svg',
+          maskable: './brand/maskable.svg',
+          monochrome: './brand/monochrome.svg',
+        },
+      },
+    };
+
+    const result = makeIcons(pwaConfig, { cwd, targets: ['pwa'], patch: true });
+    assert.equal(result.patches.length, 1);
+    assert.equal(result.produced.length, 7);
+    assert.equal(result.produced.every((item) => item.path.startsWith(path.join(cwd, 'www'))), true);
+    assert.equal(fs.existsSync(path.join(cwd, 'public')), false);
+    assert.equal(result.sourceVariants.maskable.role, 'maskable');
+    assert.equal(result.sourceVariants.monochrome.role, 'monochrome');
+    assert.notDeepEqual(
+      fs.readFileSync(path.join(cwd, 'www', 'icon-512.png')),
+      fs.readFileSync(path.join(cwd, 'www', 'icon-maskable-512.png')),
+    );
+
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    assert.ok(manifest.icons.some((entry) => entry.src === '/icon-512.png' && entry.purpose === 'any'));
+    assert.ok(manifest.icons.some((entry) => (
+      entry.src === '/icon-maskable-512.png' && entry.purpose === 'maskable'
+    )));
+    assert.ok(manifest.icons.some((entry) => (
+      entry.src === '/icon-monochrome.svg' && entry.purpose === 'monochrome'
+    )));
+  });
+
+  test('rejects an invalid PWA manifest before committing generated output', () => {
+    const cwd = tempDir();
+    const manifestPath = path.join(cwd, 'public', 'manifest.webmanifest');
+    fs.mkdirSync(path.dirname(manifestPath));
+    fs.writeFileSync(manifestPath, '{ invalid json\n');
+
+    assert.throws(
+      () => makeIcons(config, { cwd, targets: ['pwa'], patch: true }),
+      /PWA manifest patch blocked/,
+    );
+    assert.equal(fs.existsSync(path.join(cwd, 'public', 'icon-192.png')), false);
+    assert.equal(fs.readFileSync(manifestPath, 'utf8'), '{ invalid json\n');
+  });
+
+  test('rejects a non-object PWA manifest before committing generated output', () => {
+    const cwd = tempDir();
+    const manifestPath = path.join(cwd, 'public', 'manifest.json');
+    fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+    fs.writeFileSync(manifestPath, '[]');
+
+    assert.throws(
+      () => makeIcons(config, { cwd, targets: ['pwa'], patch: true }),
+      /document root/,
+    );
+    assert.equal(fs.existsSync(path.join(cwd, 'public', 'icon-192.png')), false);
+    assert.equal(fs.readFileSync(manifestPath, 'utf8'), '[]');
   });
 
   test('writes Expo adaptive icon with transparent background', () => {
@@ -368,18 +521,210 @@ describe('makeIcons', () => {
     assert.equal(result.warnings.some((warning) => warning.code === 'adaptive-source-missing'), false);
   });
 
-  test('warns when an external Expo source has no adaptive foreground variant', () => {
+  test('rejects an external Expo source without an adaptive foreground variant', () => {
     const cwd = tempDir();
     fs.mkdirSync(path.join(cwd, 'brand'));
     fs.writeFileSync(
       path.join(cwd, 'brand', 'icon.svg'),
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#123456"/></svg>',
     );
-    const result = makeIcons(
-      { ...config, mark: { ...config.mark, source: './brand/icon.svg' } },
-      { cwd, targets: ['expo'] },
+    assert.throws(
+      () => makeIcons(
+        { ...config, mark: { ...config.mark, source: './brand/icon.svg' } },
+        { cwd, targets: ['expo'] },
+      ),
+      { exitCode: 2, message: /requires a transparent adaptive foreground/ },
     );
-    assert.ok(result.warnings.some((warning) => warning.code === 'adaptive-source-missing'));
+    assert.equal(fs.existsSync(path.join(cwd, 'assets')), false);
+  });
+
+  test('rejects an adaptive foreground source that renders fully opaque', () => {
+    const cwd = tempDir();
+    fs.mkdirSync(path.join(cwd, 'brand'));
+    for (const name of ['icon', 'adaptive']) {
+      fs.writeFileSync(
+        path.join(cwd, 'brand', `${name}.svg`),
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#123456"/></svg>',
+      );
+    }
+    assert.throws(
+      () => makeIcons(
+        {
+          ...config,
+          mark: {
+            ...config.mark,
+            source: {
+              default: './brand/icon.svg',
+              adaptiveForeground: './brand/adaptive.svg',
+            },
+          },
+        },
+        { cwd, targets: ['expo'] },
+      ),
+      { exitCode: 2, message: /must contain transparent pixels/ },
+    );
+    assert.equal(fs.existsSync(path.join(cwd, 'assets')), false);
+  });
+
+  test('rejects an empty adaptive foreground before committing any outputs', () => {
+    const cwd = tempDir();
+    fs.writeFileSync(path.join(cwd, 'empty.svg'), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"/>');
+    assert.throws(() => makeIcons({ mark: { source: {
+      default: 'empty.svg', adaptiveForeground: 'empty.svg',
+    } } }, { cwd, targets: ['expo'] }), /visible pixels/);
+    assert.equal(fs.existsSync(path.join(cwd, 'assets')), false);
+  });
+
+  test('writes native Android density assets, adaptive XML, colors, and a manifest patch atomically', () => {
+    const cwd = tempDir();
+    const manifestPath = path.join(cwd, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+    fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+    fs.writeFileSync(
+      manifestPath,
+      '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:icon="@mipmap/old" /></manifest>\n',
+    );
+
+    const first = makeIcons(
+      { ...config, android: { backgroundColor: '#123456' } },
+      { cwd, targets: ['android'], patch: true },
+    );
+    const res = path.join(cwd, 'android', 'app', 'src', 'main', 'res');
+    assert.equal(first.produced.length, 18);
+    assert.equal(first.patches.length, 1);
+    assert.deepEqual(
+      pngDimensions(fs.readFileSync(path.join(res, 'mipmap-mdpi', 'ic_launcher.png'))),
+      { width: 48, height: 48 },
+    );
+    assert.deepEqual(
+      pngDimensions(fs.readFileSync(path.join(res, 'mipmap-mdpi', 'ic_launcher_foreground.png'))),
+      { width: 108, height: 108 },
+    );
+    assert.match(
+      fs.readFileSync(path.join(res, 'mipmap-anydpi-v26', 'ic_launcher.xml'), 'utf8'),
+      /@mipmap\/ic_launcher_foreground/,
+    );
+    assert.match(fs.readFileSync(path.join(res, 'values', 'ic_launcher_colors.xml'), 'utf8'), /#123456/);
+    assert.match(fs.readFileSync(manifestPath, 'utf8'), /android:icon="@mipmap\/ic_launcher"/);
+    assert.match(fs.readFileSync(manifestPath, 'utf8'), /android:roundIcon="@mipmap\/ic_launcher_round"/);
+
+    const second = makeIcons(
+      { ...config, android: { backgroundColor: '#123456' } },
+      { cwd, targets: ['android'], patch: true },
+    );
+    assert.equal(second.patches.length, 0);
+    assert.equal(second.produced.every((item) => item.written === false), true);
+  });
+
+  test('blocks malformed Android XML before committing resource output', () => {
+    const cwd = tempDir();
+    const manifestPath = path.join(cwd, 'app', 'src', 'main', 'AndroidManifest.xml');
+    fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+    fs.writeFileSync(
+      manifestPath,
+      '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:label="A & B" /></manifest>',
+    );
+
+    assert.throws(
+      () => makeIcons(config, { cwd, targets: ['android'], patch: true }),
+      /not structurally valid/,
+    );
+    assert.equal(fs.existsSync(path.join(cwd, 'app', 'src', 'main', 'res')), false);
+    assert.match(fs.readFileSync(manifestPath, 'utf8'), /A & B/);
+
+    const namespaceCwd = tempDir();
+    const namespaceManifest = path.join(namespaceCwd, 'app', 'src', 'main', 'AndroidManifest.xml');
+    fs.mkdirSync(path.dirname(namespaceManifest), { recursive: true });
+    fs.writeFileSync(namespaceManifest, '<manifest><application /></manifest>');
+    assert.throws(
+      () => makeIcons(config, { cwd: namespaceCwd, targets: ['android'], patch: true }),
+      /must declare xmlns:android/,
+    );
+    assert.equal(fs.existsSync(path.join(namespaceCwd, 'app', 'src', 'main', 'res')), false);
+  });
+
+  test('rejects a native Android source without an adaptive foreground variant', () => {
+    const cwd = tempDir();
+    const manifestPath = path.join(cwd, 'app', 'src', 'main', 'AndroidManifest.xml');
+    fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+    fs.writeFileSync(manifestPath, '<manifest><application /></manifest>\n');
+    fs.mkdirSync(path.join(cwd, 'brand'));
+    fs.writeFileSync(
+      path.join(cwd, 'brand', 'icon.svg'),
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" /></svg>',
+    );
+    assert.throws(
+      () => makeIcons(
+        { ...config, mark: { ...config.mark, source: './brand/icon.svg' } },
+        { cwd, targets: ['android'] },
+      ),
+      { exitCode: 2, message: /requires a transparent adaptive foreground/ },
+    );
+    assert.equal(fs.existsSync(path.join(cwd, 'app', 'src', 'main', 'res')), false);
+  });
+
+  test('patches Expo adaptive background and optional monochrome image from role-specific sources', () => {
+    const cwd = tempDir();
+    fs.mkdirSync(path.join(cwd, 'brand'));
+    for (const [name, body] of [
+      ['icon', '<rect width="64" height="64" fill="#123456"/>'],
+      ['adaptive', '<circle cx="32" cy="32" r="20" fill="#ffffff"/>'],
+      ['monochrome', '<path d="M16 16h32v32H16z" fill="#000000"/>'],
+    ]) {
+      fs.writeFileSync(
+        path.join(cwd, 'brand', `${name}.svg`),
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">${body}</svg>`,
+      );
+    }
+    const appJsonPath = path.join(cwd, 'app.json');
+    fs.writeFileSync(appJsonPath, JSON.stringify({ expo: { name: 'Demo' } }, null, 2));
+    const result = makeIcons(
+      {
+        ...config,
+        android: { backgroundColor: '#334455' },
+        mark: {
+          ...config.mark,
+          source: {
+            default: './brand/icon.svg',
+            adaptiveForeground: './brand/adaptive.svg',
+            monochrome: './brand/monochrome.svg',
+          },
+        },
+      },
+      { cwd, targets: ['expo'], patch: true },
+    );
+    const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
+    assert.equal(appJson.expo.android.adaptiveIcon.backgroundColor, '#334455');
+    assert.equal(appJson.expo.android.adaptiveIcon.monochromeImage, './assets/monochrome-icon.png');
+    assert.equal(result.sourceVariants.monochrome.role, 'monochrome');
+    assert.equal(fs.existsSync(path.join(cwd, 'assets', 'monochrome-icon.png')), true);
+  });
+
+  test('warns instead of executing or rewriting a dynamic Expo config', () => {
+    const cwd = tempDir();
+    const configPath = path.join(cwd, 'app.config.ts');
+    const original = 'export default ({ config }) => ({ ...config, name: "Demo" });\n';
+    fs.writeFileSync(configPath, original);
+    const result = makeIcons(config, { cwd, targets: ['expo'], patch: true });
+    assert.ok(result.warnings.some((warning) => warning.code === 'expo-dynamic-config-not-patched'));
+    assert.equal(result.warnings.some((warning) => warning.code === 'patch-target-missing'), false);
+    assert.equal(fs.readFileSync(configPath, 'utf8'), original);
+    assert.equal(result.patches.length, 0);
+  });
+
+  test('does not patch app.json when a dynamic Expo config coexists', () => {
+    const cwd = tempDir();
+    const appJsonPath = path.join(cwd, 'app.json');
+    const original = `${JSON.stringify({ expo: { name: 'Demo' } }, null, 2)}\n`;
+    fs.writeFileSync(appJsonPath, original);
+    fs.writeFileSync(
+      path.join(cwd, 'app.config.js'),
+      'module.exports = ({ config }) => ({ ...config, icon: "./legacy.png" });\n',
+    );
+
+    const result = makeIcons(config, { cwd, targets: ['expo'], patch: true });
+    assert.ok(result.warnings.some((warning) => warning.code === 'expo-dynamic-config-not-patched'));
+    assert.equal(result.patches.length, 0);
+    assert.equal(fs.readFileSync(appJsonPath, 'utf8'), original);
   });
 
   test('keeps source-derived target output stable when unrelated targets are added', () => {

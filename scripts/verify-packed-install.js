@@ -94,6 +94,8 @@ try {
   );
   const cliJson = parseJson(cliResult.stdout, 'icon-maker CLI');
   assert.equal(cliJson.ok, true);
+  assert.equal(cliJson.schemaVersion, 1);
+  assert.equal(cliJson.kind, 'compile');
   assert.equal(cliJson.sourceMode, 'placeholder');
   assert.deepEqual(cliJson.targets, ['generic']);
   assert.ok(cliJson.produced.length >= 2, 'CLI produced no icon files');

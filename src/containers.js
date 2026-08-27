@@ -28,6 +28,9 @@ function encodeIco(images) {
 }
 
 function icnsType(size) {
+  if (size === 16) return 'icp4';
+  if (size === 32) return 'icp5';
+  if (size === 64) return 'icp6';
   if (size === 128) return 'ic07';
   if (size === 256) return 'ic08';
   if (size === 512) return 'ic09';

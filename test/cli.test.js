@@ -27,6 +27,16 @@ describe('cli args', () => {
     assert.equal(opts.outDir, 'out');
   });
 
+  test('parses check strictness and rejects unsafe option combinations', () => {
+    const opts = parseArgs(['--check', '--strict', '--target', 'pwa', '--out-dir', 'out']);
+    assert.equal(opts.check, true);
+    assert.equal(opts.strict, true);
+    assert.equal(opts.outDir, 'out');
+    assert.throws(() => parseArgs(['--strict']), { exitCode: 2, message: /requires --check/ });
+    assert.throws(() => parseArgs(['--check', '--source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });
+    assert.throws(() => parseArgs(['--patch', '--out-dir', 'out']), { exitCode: 2, message: /cannot be combined/ });
+  });
+
   test('parses provider-neutral brief and direct source options', () => {
     const brief = parseArgs([
       '--brief', '--target', 'apple,pwa', '--direction-name', 'Focused signal',
@@ -50,10 +60,14 @@ describe('cli args', () => {
     const compile = parseArgs([
       '--source', './brand/icon.png',
       '--adaptive-source', './brand/icon-adaptive.svg',
+      '--maskable-source', './brand/icon-maskable.svg',
+      '--monochrome-source', './brand/icon-monochrome.svg',
       '--target', 'apple',
     ]);
     assert.equal(compile.source, './brand/icon.png');
     assert.equal(compile.adaptiveSource, './brand/icon-adaptive.svg');
+    assert.equal(compile.maskableSource, './brand/icon-maskable.svg');
+    assert.equal(compile.monochromeSource, './brand/icon-monochrome.svg');
 
     const placeholder = parseArgs(['--placeholder', '--target', 'generic']);
     assert.equal(placeholder.placeholder, true);
@@ -69,6 +83,12 @@ describe('cli args', () => {
     assert.throws(() => parseArgs(['--init', '--source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });
     assert.throws(() => parseArgs(['--placeholder', '--source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });
     assert.throws(() => parseArgs(['--brief', '--placeholder']), { exitCode: 2, message: /cannot be combined/ });
+    assert.throws(() => parseArgs(['--check', '--monochrome-source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });
+    assert.throws(() => parseArgs(['--check', '--maskable-source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });
+    assert.throws(() => parseArgs(['--brief', '--monochrome-source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });
+    assert.throws(() => parseArgs(['--brief', '--maskable-source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });
+    assert.throws(() => parseArgs(['--placeholder', '--monochrome-source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });
+    assert.throws(() => parseArgs(['--placeholder', '--maskable-source', 'icon.svg']), { exitCode: 2, message: /cannot be combined/ });
     assert.throws(() => parseArgs(['--concept', 'a signal']), { exitCode: 2, message: /require --brief/ });
     assert.throws(() => parseArgs(['--approve-direction']), { exitCode: 2, message: /require --brief/ });
   });
@@ -216,6 +236,67 @@ describe('cli args', () => {
     assert.doesNotMatch(parsed.prompt, /two clearly named finished image files/);
   });
 
+  test('reports native Android safe-zone and separately approved source roles before direction exists', () => {
+    const cwd = tempDir();
+    const bin = path.resolve(__dirname, '..', 'bin', 'icon-maker.js');
+    const result = spawnSync(process.execPath, [bin, cwd, '--brief', '--target', 'android', '--json'], {
+      encoding: 'utf8',
+    });
+    const parsed = JSON.parse(result.stdout);
+    const constraint = parsed.technicalConstraints[0];
+    assert.equal(result.status, 0);
+    assert.equal(parsed.requestType, 'direction-discovery');
+    assert.equal(parsed.imagePrompt, null);
+    assert.equal(constraint.target, 'android');
+    assert.deepEqual(constraint.sourceRoles.map((role) => role.name), [
+      'default',
+      'adaptiveForeground',
+      'round',
+      'monochrome',
+    ]);
+    assert.deepEqual(
+      constraint.sourceRoles.map((role) => role.approvalRequired),
+      [true, true, true, true],
+    );
+    assert.equal(constraint.sourceRoles.find((role) => role.name === 'adaptiveForeground').safeZone, '66x66');
+    assert.equal(constraint.sourceRoles.find((role) => role.name === 'monochrome').minimumAndroidApi, 33);
+    assert.match(parsed.prompt, /central 66 x 66 safe zone.*108 x 108 layer/);
+    assert.match(parsed.prompt, /never invent role variants from technical constraints/);
+  });
+
+  test('keeps PWA maskable and monochrome roles optional and separately approved', () => {
+    const cwd = tempDir();
+    const result = makeDesignBrief(
+      { project: { name: 'PWA Demo' }, targets: ['pwa'] },
+      { cwd },
+    );
+    const roles = result.technicalConstraints[0].sourceRoles;
+    assert.deepEqual(roles.map((role) => role.name), ['default', 'maskable', 'monochrome']);
+    assert.equal(roles.find((role) => role.name === 'maskable').required, false);
+    assert.equal(roles.find((role) => role.name === 'maskable').approvalRequired, true);
+    assert.match(roles.find((role) => role.name === 'maskable').safeZone, /40% radius/);
+    assert.match(result.prompt, /only separately approved artwork may be labeled maskable or monochrome/);
+  });
+
+  test('requests Android role files only after direction approval and keeps optional roles gated', () => {
+    const cwd = tempDir();
+    const result = makeDesignBrief(
+      { project: { name: 'Native Demo' }, targets: ['android'] },
+      {
+        cwd,
+        direction: {
+          concept: 'one calm signal',
+          mood: ['precise'],
+          approved: true,
+        },
+      },
+    );
+    assert.equal(result.requestType, 'image-generation');
+    assert.match(result.prompt, /separately approved transparent adaptiveForeground source/);
+    assert.match(result.prompt, /Android 13 monochrome artwork only as a separately approved single-color source/);
+    assert.match(result.prompt, /icon-round\.png.*icon-monochrome\.png.*explicitly approved/);
+  });
+
   test('uses input config targets for programmatic source requests', () => {
     const cwd = tempDir();
     const result = makeDesignBrief({ project: { name: 'Expo App' }, targets: ['expo'] }, { cwd });
@@ -278,6 +359,8 @@ describe('cli args', () => {
     const parsed = JSON.parse(result.stdout);
     assert.equal(result.status, 0);
     assert.equal(parsed.source.type, 'svg');
+    assert.equal(parsed.schemaVersion, 1);
+    assert.equal(parsed.kind, 'compile');
     assert.equal(parsed.sourceMode, 'source');
     assert.equal(parsed.produced.every((item) => fs.existsSync(item.path)), true);
   });
@@ -334,6 +417,10 @@ describe('cli args', () => {
     assert.equal(result.created, true);
     assert.ok(text.includes("glyph: \"spark\""));
     assert.ok(text.includes('targets: ["expo"]'));
+    assert.ok(text.includes("maskable: './brand/icon-maskable.png'"));
+    assert.ok(text.includes("monochrome: './brand/icon-monochrome.png'"));
+    assert.ok(text.includes("manifest: './android/app/src/main/AndroidManifest.xml'"));
+    assert.ok(text.includes("pwa: { manifest: './public/manifest.webmanifest' }"));
   });
 
   test('init honors an explicit JSON config path', () => {

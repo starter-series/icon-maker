@@ -17,7 +17,8 @@ function titleFromName(name) {
 
 function readPackage(cwd) {
   try {
-    return JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'));
+    const json = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'));
+    return json && typeof json === 'object' && !Array.isArray(json) ? json : {};
   } catch (_err) {
     return {};
   }
@@ -43,7 +44,7 @@ function defaultConfig(cwd = process.cwd(), targets = ['auto']) {
     mark: {
       ...markPresetForTargets(resolvedTargets),
       radius: 0.24,
-      // Optional: set source to an SVG/PNG path or a default/adaptiveForeground object.
+      // Optional: set source to an SVG/PNG path or a role-based source object.
       // source: './assets/source-icon.svg',
     },
     targets: resolvedTargets,
@@ -59,6 +60,8 @@ function mergeConfig(base, override) {
   };
   if (base.design || override.design) merged.design = { ...base.design, ...override.design };
   if (base.apple || override.apple) merged.apple = { ...base.apple, ...override.apple };
+  if (base.android || override.android) merged.android = { ...base.android, ...override.android };
+  if (base.pwa || override.pwa) merged.pwa = { ...base.pwa, ...override.pwa };
   return merged;
 }
 
@@ -139,10 +142,30 @@ function renderDefaultConfig(cwd = process.cwd(), targets = ['auto']) {
     accent: ${JSON.stringify(config.mark.accent)},
     radius: ${JSON.stringify(config.mark.radius)},
     // Approved source artwork:
-    // source: { default: './brand/icon.png', adaptiveForeground: './brand/icon-adaptive.png' },
+    // source: {
+    //   default: './brand/icon.png',
+    //   adaptiveForeground: './brand/icon-adaptive.png',
+    //   maskable: './brand/icon-maskable.png',
+    //   round: './brand/icon-round.png',
+    //   monochrome: './brand/icon-monochrome.png',
+    // },
   },
-  // When Xcode routing is ambiguous, select the catalog and App Icon set:
-  // apple: { assetCatalog: './MyApp/Assets.xcassets', appIconSet: 'AppIcon' },
+  // Select legacy catalog compilation or verify an approved Icon Composer artifact:
+  // apple: {
+  //   deliveryMode: 'legacy', // auto | legacy | icon-composer
+  //   assetCatalog: './MyApp/Assets.xcassets',
+  //   appIconSet: 'AppIcon',
+  //   // iconComposer: './Brand/AppIcon.icon',
+  // },
+  // When Android routing or resource names need to be explicit:
+  // android: {
+  //   manifest: './android/app/src/main/AndroidManifest.xml',
+  //   resourceName: 'ic_launcher',
+  //   roundResourceName: 'ic_launcher_round',
+  //   backgroundColor: '#111827',
+  // },
+  // Select one data-only manifest when discovery finds more than one:
+  // pwa: { manifest: './public/manifest.webmanifest' },
   targets: ${JSON.stringify(config.targets)},
 };
 `;

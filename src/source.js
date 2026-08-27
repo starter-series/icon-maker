@@ -3,12 +3,16 @@ const path = require('path');
 const { toHex } = require('./color');
 const { assertContainedExistingPath } = require('./path-safety');
 const { PNG_SIGNATURE, unpremultiplyRgba } = require('./png');
+const { inspectPng } = require('./png-inspect');
 
 function sourcePathFromConfig(config, role = 'default') {
   const source = config.mark?.source || config.source;
   if (!source) return null;
   if (typeof source === 'string') return role === 'default' ? source : null;
   if (role === 'adaptive-foreground') return source.adaptiveForeground || source.adaptive || null;
+  if (role === 'maskable') return source.maskable || null;
+  if (role === 'round') return source.round || null;
+  if (role === 'monochrome') return source.monochrome || null;
   return source.default || source.path || source.svg || source.png || null;
 }
 
@@ -46,17 +50,36 @@ function beginsWithSvg(text) {
   return /^(?:<\?xml[\s\S]*?\?>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE[\s\S]*?>\s*)?<svg[\s>]/i.test(normalized);
 }
 
+function validateSvgDocument(svg) {
+  // Validate the document itself: resvg can silently omit an invalid image
+  // when it is nested inside our data-URL wrapper.
+  const { Resvg } = require('@resvg/resvg-js');
+  new Resvg(svg, { fitTo: { mode: 'width', value: 1 }, font: { loadSystemFonts: false } });
+}
+
 function loadSource(cwd, config, role = 'default') {
   const sourcePath = sourcePathFromConfig(config, role);
   if (!sourcePath) return null;
   const absolutePath = resolveSourcePath(cwd, sourcePath);
   const buffer = fs.readFileSync(absolutePath);
   if (buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
-    return { type: 'png', role, path: absolutePath, buffer, ...pngDimensions(buffer, absolutePath) };
+    const dimensions = pngDimensions(buffer, absolutePath);
+    const inspected = inspectPng(buffer);
+    if (!inspected.valid) {
+      throw new Error(`icon-maker: source is not a valid PNG file (${inspected.reason}): ${absolutePath}`);
+    }
+    return { type: 'png', role, path: absolutePath, buffer, ...dimensions };
   }
   const text = buffer.toString('utf8');
   const svg = unwrapSvgFence(text);
-  if (svg && beginsWithSvg(svg)) return { type: 'svg', role, path: absolutePath, svg };
+  if (svg && beginsWithSvg(svg)) {
+    try {
+      validateSvgDocument(svg);
+    } catch (err) {
+      throw new Error(`icon-maker: invalid SVG source: ${absolutePath} (${err.message})`, { cause: err });
+    }
+    return { type: 'svg', role, path: absolutePath, svg };
+  }
   throw new Error(`icon-maker: source must be an SVG or PNG file: ${absolutePath}`);
 }
 
@@ -127,4 +150,5 @@ module.exports = {
   renderSourceToSvg,
   renderSourceSvgToPng,
   sourcePathFromConfig,
+  validateSvgDocument,
 };

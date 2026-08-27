@@ -1,6 +1,6 @@
 ---
 name: create-icons
-description: Resolve icon target constraints and brand evidence, obtain separate direction and artwork approvals, then compile an approved SVG/PNG into Apple/Xcode, app, browser-extension, PWA, VS Code, Electron, or MCP connector assets with icon-maker.
+description: Resolve icon target constraints and brand evidence, obtain separate direction and artwork approvals, then compile and verify approved SVG/PNG sources for Apple/Xcode, native Android, Expo, browser-extension, PWA, VS Code, Electron, or MCP connector delivery with icon-maker.
 ---
 
 # Create icon assets with icon-maker
@@ -113,20 +113,26 @@ not a capability of the offline compiler.
 
 3. **Generate and review a candidate** only from the approved image-generation
    brief. Pass its `imagePrompt` and `sourceContract` to an available image provider,
-   show the result, and stop for artwork approval. For Expo, acquire the separate
-   transparent adaptive foreground required by `sourceContract.variants`.
+   show the result, and stop for artwork approval. For Expo or native Android,
+   acquire the separate transparent adaptive foreground required by
+   `sourceContract.variants`. Treat Android round/monochrome and PWA
+   maskable/monochrome as optional, separately approved artwork roles; never
+   relabel the default image to satisfy a technical purpose.
 
 4. **Materialize approved artwork** inside the target checkout. Prefer the
    provider's local output path. Use `--source` for a one-off handoff, or run
    `--init` and set `mark.source` when the path should persist. Set
-   `mark.source.adaptiveForeground` for Expo when needed. `mark.background`
-   controls Apple flattening for transparent input.
+   `mark.source.adaptiveForeground` for Expo/Android when needed. Use
+   `mark.source.maskable`, `round`, or `monochrome` only for separately approved
+   role files. `mark.background` controls Apple flattening for transparent input.
 
 5. **Compile a preview, then patch separately**:
 
    ```bash
    node /path/to/icon-maker/bin/icon-maker.js <repo> --source ./brand/icon.png --target auto --preview --json
    node /path/to/icon-maker/bin/icon-maker.js <repo> --source ./brand/icon.png --adaptive-source ./brand/icon-adaptive.png --target expo --preview --json
+   node /path/to/icon-maker/bin/icon-maker.js <repo> --source ./brand/icon.png --adaptive-source ./brand/icon-adaptive.png --target android --preview --json
+   node /path/to/icon-maker/bin/icon-maker.js <repo> --source ./brand/icon.png --maskable-source ./brand/icon-maskable.png --target pwa --preview --json
    node /path/to/icon-maker/bin/icon-maker.js <repo> --source ./brand/icon.png --target browser-extension --patch --json
    ```
 
@@ -134,20 +140,34 @@ not a capability of the offline compiler.
    `--dry-run --json` to inspect output paths without writing. Review
    `icon-preview.html` before running the separate `--patch` command.
 
-6. **Verify** the JSON result, including `produced[]` and `warnings[]`. If
-   `--patch` was used, inspect the relevant `manifest.json`, `app.json`,
-   `package.json`, or `public/manifest.json`.
+6. **Verify** the JSON result, including `produced[]` and `warnings[]`, then run
+   the read-only checker against persistent config:
+
+   ```bash
+   node /path/to/icon-maker/bin/icon-maker.js <repo> --target auto --check --strict --json
+   ```
+
+   If `--patch` was used, inspect the relevant `manifest.json`, `app.json`,
+   `AndroidManifest.xml`, `package.json`, or resolved PWA `.webmanifest`/JSON.
+   `--check` validates generated artifacts and supported project wiring; it does
+   not approve artwork or replace platform build/store review.
 
 ## Notes
 
 - The CLI writes platform PNGs and preserves SVG input or creates an SVG
   wrapper for PNG input where a target needs SVG.
 - `apple` detects the selected App Icon name from Xcode. Configure
-  `apple.assetCatalog` or `apple.appIconSet` when routing is ambiguous; existing
-  sets that reference unmanaged files are not replaced.
+  `apple.assetCatalog` or `apple.appIconSet` when legacy routing is ambiguous;
+  existing sets that reference unmanaged files are not replaced. An existing
+  approved `.icon` uses `apple.deliveryMode: 'icon-composer'` and is verified as
+  a pass-through artifact rather than synthesized.
+- `android` emits density-specific legacy/round/adaptive resources and v26/v33
+  XML, then conservatively patches launcher attributes when requested.
 - `expo` requires a distinct transparent adaptive foreground when the default
   artwork has an opaque background.
-- `electron` emits PNG, ICO, and ICNS; `pwa` emits favicon ICO plus PNG/SVG.
+- `electron` emits PNG, ICO, and ICNS and wires supported electron-builder or
+  static Forge config; `pwa` resolves public/www manifests and emits optional
+  role assets only from distinct approved sources.
 - The compiler never calls image-generation, Figma, or design tools. The
   approved project-local SVG/PNG remains the compiler handoff contract.
 - Do not position this as an MCP server. File generation belongs to the CLI;

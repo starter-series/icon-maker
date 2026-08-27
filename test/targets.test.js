@@ -33,10 +33,34 @@ describe('target detection', () => {
     assert.deepEqual(detectTargets(cwd).sort(), ['electron', 'mcp-connector', 'pwa']);
   });
 
+  test('detects a PWA from a www webmanifest', () => {
+    const cwd = tempDir();
+    fs.mkdirSync(path.join(cwd, 'www'));
+    fs.writeFileSync(path.join(cwd, 'www', 'manifest.webmanifest'), JSON.stringify({ name: 'Demo' }));
+    assert.deepEqual(detectTargets(cwd), ['pwa']);
+  });
+
   test('detects Apple projects from an Xcode asset catalog', () => {
     const cwd = tempDir();
     fs.mkdirSync(path.join(cwd, 'Demo', 'Assets.xcassets'), { recursive: true });
     assert.deepEqual(detectTargets(cwd), ['apple']);
+  });
+
+  test('detects a native Android source set', () => {
+    const cwd = tempDir();
+    const manifest = path.join(cwd, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+    fs.mkdirSync(path.dirname(manifest), { recursive: true });
+    fs.writeFileSync(manifest, '<manifest><application /></manifest>\n');
+    assert.deepEqual(detectTargets(cwd), ['android']);
+  });
+
+  test('does not duplicate native Android when an Expo project contains generated Android sources', () => {
+    const cwd = tempDir();
+    const manifest = path.join(cwd, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+    fs.mkdirSync(path.dirname(manifest), { recursive: true });
+    fs.writeFileSync(manifest, '<manifest><application /></manifest>\n');
+    fs.writeFileSync(path.join(cwd, 'app.config.ts'), 'export default { name: "Demo" };\n');
+    assert.deepEqual(detectTargets(cwd), ['expo']);
   });
 
   test('falls back to generic and rejects unknown explicit target', () => {

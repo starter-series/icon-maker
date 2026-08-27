@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { assertContainedOutputPath } = require('./path-safety');
+const { assertContainedExistingPath, assertContainedOutputPath } = require('./path-safety');
 
 const SKIP_DIRECTORIES = new Set([
   '.git',
@@ -18,8 +18,24 @@ const SKIP_DIRECTORIES = new Set([
 ]);
 
 function scanAppleProject(cwd, maxDepth = 5) {
+  const appIconSets = [];
   const catalogs = [];
+  const iconComposerFiles = [];
   const projects = [];
+
+  function scanAppIconSets(catalog) {
+    let entries;
+    try {
+      entries = fs.readdirSync(catalog, { withFileTypes: true });
+    } catch (_err) {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory() && !entry.isSymbolicLink() && entry.name.toLowerCase().endsWith('.appiconset')) {
+        appIconSets.push(path.join(catalog, entry.name));
+      }
+    }
+  }
 
   function visit(directory, depth) {
     let entries;
@@ -30,13 +46,20 @@ function scanAppleProject(cwd, maxDepth = 5) {
     }
 
     for (const entry of entries) {
-      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+      if (entry.isSymbolicLink()) continue;
       const absolutePath = path.join(directory, entry.name);
-      if (entry.name.endsWith('.xcassets')) {
-        catalogs.push(absolutePath);
+      const lowerName = entry.name.toLowerCase();
+      if (lowerName.endsWith('.icon') && (entry.isFile() || entry.isDirectory())) {
+        iconComposerFiles.push(absolutePath);
         continue;
       }
-      if (entry.name.endsWith('.xcodeproj') || entry.name.endsWith('.xcworkspace')) {
+      if (!entry.isDirectory()) continue;
+      if (lowerName.endsWith('.xcassets')) {
+        catalogs.push(absolutePath);
+        scanAppIconSets(absolutePath);
+        continue;
+      }
+      if (lowerName.endsWith('.xcodeproj') || lowerName.endsWith('.xcworkspace')) {
         projects.push(absolutePath);
         continue;
       }
@@ -47,7 +70,12 @@ function scanAppleProject(cwd, maxDepth = 5) {
   }
 
   visit(cwd, 0);
-  return { catalogs, projects };
+  return {
+    appIconSets: appIconSets.sort(),
+    catalogs: catalogs.sort(),
+    iconComposerFiles: iconComposerFiles.sort(),
+    projects: projects.sort(),
+  };
 }
 
 function projectScan(cwd, context) {
@@ -59,7 +87,117 @@ function projectScan(cwd, context) {
 
 function hasAppleProject(cwd, context) {
   const scanned = projectScan(cwd, context);
-  return scanned.catalogs.length > 0 || scanned.projects.length > 0;
+  return scanned.catalogs.length > 0 || scanned.projects.length > 0 || (scanned.iconComposerFiles || []).length > 0;
+}
+
+function portableRelative(cwd, candidate) {
+  return path.relative(cwd, candidate).split(path.sep).join('/');
+}
+
+function explicitIconComposer(cwd, configured) {
+  if (typeof configured !== 'string' || !configured.trim()) {
+    const err = new Error('apple.iconComposer must be a non-empty path');
+    err.exitCode = 2;
+    throw err;
+  }
+  const candidate = path.resolve(cwd, configured);
+  if (path.extname(candidate).toLowerCase() !== '.icon') {
+    const err = new Error(`apple.iconComposer must point to an .icon file or package: ${candidate}`);
+    err.exitCode = 2;
+    throw err;
+  }
+  if (!fs.existsSync(candidate)) {
+    const err = new Error(`apple.iconComposer does not exist: ${candidate}`);
+    err.exitCode = 2;
+    throw err;
+  }
+  const realCandidate = assertContainedExistingPath(cwd, candidate, 'apple.iconComposer');
+  const stat = fs.statSync(realCandidate);
+  if (!stat.isFile() && !stat.isDirectory()) {
+    const err = new Error(`apple.iconComposer must be an existing file or package: ${candidate}`);
+    err.exitCode = 2;
+    throw err;
+  }
+  return candidate;
+}
+
+function resolveAppleIconComposer(cwd, config, _warnings = [], scanned = null) {
+  if (config.apple && Object.prototype.hasOwnProperty.call(config.apple, 'iconComposer')) {
+    return explicitIconComposer(cwd, config.apple.iconComposer);
+  }
+  const candidates = [...((scanned || scanAppleProject(cwd)).iconComposerFiles || [])];
+  if (!candidates.length) return null;
+  if (candidates.length === 1) return candidates[0];
+  const listed = candidates.map((candidate) => portableRelative(cwd, candidate)).join(', ');
+  const err = new Error(
+    `multiple Icon Composer artifacts found (${listed}); set apple.iconComposer in icon-maker config`,
+  );
+  err.exitCode = 2;
+  throw err;
+}
+
+function productionAppIconSets(scanned) {
+  return (scanned.appIconSets || []).filter((set) => !isPreviewCatalog(path.dirname(set)));
+}
+
+function resolveAppleDeliveryMode(cwd, config, warnings = [], scanned = null) {
+  const project = scanned || scanAppleProject(cwd);
+  const requested = config.apple?.deliveryMode || 'auto';
+  if (!['auto', 'legacy', 'icon-composer'].includes(requested)) {
+    const err = new Error(
+      `apple.deliveryMode must be auto, legacy, or icon-composer: ${requested}`,
+    );
+    err.exitCode = 2;
+    throw err;
+  }
+
+  const hasExplicitComposer = Boolean(
+    config.apple && Object.prototype.hasOwnProperty.call(config.apple, 'iconComposer'),
+  );
+  const explicitComposer = hasExplicitComposer
+    ? explicitIconComposer(cwd, config.apple.iconComposer)
+    : null;
+  const composerCandidates = project.iconComposerFiles || [];
+  const legacySets = productionAppIconSets(project);
+  if (requested === 'legacy') {
+    if (composerCandidates.length || explicitComposer) {
+      warnings.push({
+        code: 'apple-icon-composer-ignored',
+        message: 'apple.deliveryMode is legacy; existing Icon Composer artifacts will not replace the AppIcon asset catalog',
+      });
+    }
+    return 'legacy';
+  }
+
+  const iconComposer = explicitComposer || resolveAppleIconComposer(cwd, config, warnings, project);
+  if (requested === 'icon-composer') {
+    if (!iconComposer) {
+      const err = new Error(
+        'apple.deliveryMode is icon-composer, but no approved .icon artifact was found; set apple.iconComposer',
+      );
+      err.exitCode = 2;
+      throw err;
+    }
+    if (legacySets.length) {
+      warnings.push({
+        code: 'apple-legacy-appiconset-ignored',
+        message: 'apple.deliveryMode is icon-composer; the existing AppIcon asset catalog remains a legacy fallback',
+      });
+    }
+    return 'icon-composer';
+  }
+
+  if (iconComposer && legacySets.length) {
+    const composer = portableRelative(cwd, iconComposer);
+    const legacy = legacySets.map((set) => portableRelative(cwd, set)).join(', ');
+    const err = new Error(
+      `both Icon Composer (${composer}) and legacy AppIcon sets (${legacy}) exist; ` +
+      'set apple.deliveryMode to legacy or icon-composer',
+    );
+    err.exitCode = 2;
+    throw err;
+  }
+  return iconComposer ? 'icon-composer' : 'legacy';
 }
 
 function explicitAssetCatalog(cwd, configured) {
@@ -249,5 +387,7 @@ module.exports = {
   projectScan,
   resolveAppleAppIconSet,
   resolveAppleAssetCatalog,
+  resolveAppleDeliveryMode,
+  resolveAppleIconComposer,
   scanAppleProject,
 };

@@ -10,13 +10,17 @@ Arguments:
   path                repo to run against (default: current directory)
 
 Options:
-  --target <name>     target to generate: auto, apple, browser-extension, expo,
+  --target <name>     target to generate: auto, apple, android, browser-extension, expo,
                       electron, vscode, pwa, mcp-connector, generic.
                       Repeatable or comma-separated. Default: config targets or auto.
   --config <path>     config file (default: icon-maker.config.json, then .js)
   --source <path>     compile a self-contained SVG or PNG without editing config
   --adaptive-source <path>
-                      optional transparent Expo adaptive-icon foreground
+                      transparent Expo/Android adaptive-icon foreground
+  --maskable-source <path>
+                      approved separate PWA maskable icon source
+  --monochrome-source <path>
+                      optional PWA/Expo/Android monochrome foreground
   --brief             print an upstream image-generation/source request
   --direction-name <text>
                       optional name for a proposed direction
@@ -32,6 +36,8 @@ Options:
   --placeholder       explicitly use the deterministic temporary mark
   --out-dir <path>    write generated files under this directory, grouped by target
   --patch             update known manifest/app/package icon fields after writing
+  --check             validate existing target outputs without writing files
+  --strict            make --check fail on warnings as well as errors
   --preview           write icon-preview.html contact sheet next to the outputs
   --dry-run           compute outputs without writing files
   --init              write a config file if it does not exist; defaults to
@@ -59,6 +65,8 @@ const VALUE_OPTIONS = {
   '--config': { key: 'config' },
   '--source': { key: 'source' },
   '--adaptive-source': { key: 'adaptiveSource' },
+  '--maskable-source': { key: 'maskableSource' },
+  '--monochrome-source': { key: 'monochromeSource' },
   '--out-dir': { key: 'outDir' },
   '--direction-name': { key: 'directionName' },
   '--concept': { key: 'concept' },
@@ -72,6 +80,8 @@ const VALUE_OPTIONS = {
 
 const FLAG_OPTIONS = {
   '--patch': 'patch',
+  '--check': 'check',
+  '--strict': 'strict',
   '--preview': 'preview',
   '--dry-run': 'dryRun',
   '--init': 'init',
@@ -93,9 +103,13 @@ function defaultOptions() {
     config: null,
     source: null,
     adaptiveSource: null,
+    maskableSource: null,
+    monochromeSource: null,
     placeholder: false,
     outDir: null,
     patch: false,
+    check: false,
+    strict: false,
     preview: false,
     dryRun: false,
     init: false,
@@ -138,13 +152,26 @@ function hasAnyOption(opts, keys) {
 }
 
 function validateOptionCombinations(opts) {
+  if (opts.patch && opts.outDir) throw usageError('--patch cannot be combined with --out-dir');
+  if (opts.strict && !opts.check) throw usageError('--strict requires --check');
+  if (opts.check && (
+    opts.source || opts.adaptiveSource || opts.maskableSource || opts.monochromeSource || opts.placeholder ||
+    opts.patch || opts.preview ||
+    opts.dryRun || opts.init || opts.brief
+  )) {
+    throw usageError('--check cannot be combined with compile, brief, or init options');
+  }
   if (opts.brief && opts.init) throw usageError('--brief cannot be combined with --init');
   if (opts.brief && opts.source) throw usageError('--brief cannot be combined with --source');
   if (opts.brief && opts.adaptiveSource) throw usageError('--brief cannot be combined with --adaptive-source');
+  if (opts.brief && opts.maskableSource) throw usageError('--brief cannot be combined with --maskable-source');
+  if (opts.brief && opts.monochromeSource) throw usageError('--brief cannot be combined with --monochrome-source');
   if (opts.init && opts.source) throw usageError('--init cannot be combined with --source');
   if (opts.init && opts.adaptiveSource) throw usageError('--init cannot be combined with --adaptive-source');
+  if (opts.init && opts.maskableSource) throw usageError('--init cannot be combined with --maskable-source');
+  if (opts.init && opts.monochromeSource) throw usageError('--init cannot be combined with --monochrome-source');
   if (opts.init && opts.placeholder) throw usageError('--init cannot be combined with --placeholder');
-  if (opts.placeholder && (opts.source || opts.adaptiveSource)) {
+  if (opts.placeholder && (opts.source || opts.adaptiveSource || opts.maskableSource || opts.monochromeSource)) {
     throw usageError('--placeholder cannot be combined with source options');
   }
   if (opts.brief && (opts.patch || opts.preview || opts.dryRun || opts.outDir || opts.placeholder)) {

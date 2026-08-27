@@ -1,39 +1,27 @@
-const fs = require('fs');
 const path = require('path');
 const {
   mergeAppleContents,
   projectScan,
   resolveAppleAppIconSet,
   resolveAppleAssetCatalog,
+  resolveAppleDeliveryMode,
 } = require('./apple');
+const { androidProjectScan, planAndroidIconFiles, resolveAndroidProject } = require('./android');
 const { parseHexColor, toHex } = require('./color');
 const { encodeIco, encodeIcns } = require('./containers');
 const { defaultConfig, loadConfig, mergeConfig, validateConfig } = require('./config');
 const { encodePng, encodeRgbPng, rasterizePrimitives, resizeRgba } = require('./png');
 const { assertContainedOutputPath, sameRealFile } = require('./path-safety');
+const { inspectPng } = require('./png-inspect');
 const { renderPreviewHtml } = require('./preview');
+const { planPwaIconFiles, resolvePwaManifest } = require('./pwa');
 const { loadSource, renderSourceToPixels, renderSourceToPng, renderSourceToSvg } = require('./source');
 const { renderSvg } = require('./svg');
 const { buildPrimitives } = require('./mark');
 const { TARGETS, resolveTargets } = require('./targets');
-const { applyPatches } = require('./patch');
+const { planPatches } = require('./patch');
+const { commitWriteTransaction } = require('./write-transaction');
 const { resolveSourceMode } = require('./workflow');
-
-function ensureDir(file) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-}
-
-function writeFileIfChanged(file, contents) {
-  const next = contentBuffer(contents);
-  try {
-    if (fs.readFileSync(file).equals(next)) return false;
-  } catch (err) {
-    if (!err || err.code !== 'ENOENT') throw err;
-  }
-  ensureDir(file);
-  fs.writeFileSync(file, next);
-  return true;
-}
 
 function contentBuffer(contents) {
   return Buffer.isBuffer(contents) ? contents : Buffer.from(contents);
@@ -49,6 +37,19 @@ function outputPath(cwd, opts, target, relativePath, targetContexts) {
     return path.resolve(context.catalog, `${context.appIconSet}.appiconset`, relativePath.slice(prefix.length));
   }
   if (opts.outDir) return path.resolve(cwd, opts.outDir, target, relativePath);
+  if (target === 'pwa') {
+    const context = targetContexts.get('pwa');
+    const prefix = 'public/';
+    if (!context?.publicRoot || !relativePath.startsWith(prefix)) {
+      throw new Error(`invalid ${target} output path: ${relativePath}`);
+    }
+    return path.resolve(context.publicRoot, relativePath.slice(prefix.length));
+  }
+  if (target === 'android') {
+    const context = targetContexts.get('android');
+    if (!context) throw new Error(`missing ${target} output context`);
+    return path.resolve(context.resDir, relativePath);
+  }
   return path.resolve(cwd, relativePath);
 }
 
@@ -97,11 +98,15 @@ function rasterSizes(file) {
 
 const SOURCE_MASTER_SIZE = Math.max(
   1024,
-  ...Object.values(TARGETS).flatMap((target) => target.files.flatMap(rasterSizes)),
+  ...Object.values(TARGETS).flatMap((target) => (target.files || []).flatMap(rasterSizes)),
 );
 
 function sourceForFile(sources, file) {
-  if (file.role === 'adaptive-foreground') return sources.adaptiveForeground || sources.default;
+  const role = file.sourceRole || file.role || 'default';
+  if (role === 'adaptive-foreground') return sources.adaptiveForeground;
+  if (role === 'maskable') return sources.maskable;
+  if (role === 'round') return sources.round || sources.default;
+  if (role === 'monochrome') return sources.monochrome;
   return sources.default;
 }
 
@@ -139,6 +144,7 @@ function createRenderer(config, sources) {
 
 function renderFile(config, file, source, renderCachedPng = (pngFile, size) => renderPng(config, pngFile, size, source)) {
   if (file.format === 'json') return `${JSON.stringify(file.contents, null, 2)}\n`;
+  if (file.format === 'xml') return String(file.contents);
   if (file.format === 'svg') return source ? renderSourceToSvg(source, file.size) : renderSvg(fileConfig(config, file), { size: file.size });
   if (file.format === 'png') return renderCachedPng(file, file.size);
   if (file.format === 'ico') {
@@ -155,18 +161,19 @@ function previewPath(cwd, opts) {
   return path.resolve(cwd, rel);
 }
 
-function addSourceWarnings(source, targets, warnings) {
+function addSourceWarnings(source, targets, warnings, explicitFiles = null) {
   if (!source || source.type !== 'png') return;
-  const label = source.role === 'adaptive-foreground' ? 'adaptive-foreground source PNG' : 'source PNG';
+  const label = source.role === 'default' ? 'source PNG' : `${source.role} source PNG`;
   if (source.width !== source.height) {
     warnings.push({
       code: 'non-square-source',
       message: `${label} is ${source.width}x${source.height}; outputs use contain scaling on square canvases`,
     });
   }
-  const requestedSizes = targets.flatMap((target) => TARGETS[target].files.flatMap((file) => (
+  const files = explicitFiles || targets.flatMap((target) => TARGETS[target].files);
+  const requestedSizes = files.flatMap((file) => (
     file.size ? [file.size] : file.sizes || []
-  )));
+  ));
   const largest = requestedSizes.length ? Math.max(...requestedSizes) : 0;
   if (largest && source.width < largest && source.height < largest) {
     warnings.push({
@@ -203,15 +210,26 @@ function sourceConfigObject(source) {
 }
 
 function applySourceOverrides(config, opts) {
-  if (!opts.source && !opts.adaptiveSource) return config;
+  if (!opts.source && !opts.adaptiveSource && !opts.maskableSource && !opts.monochromeSource) return config;
   const source = sourceConfigObject(config.mark?.source || config.source);
   if (opts.source) source.default = opts.source;
   if (opts.adaptiveSource) source.adaptiveForeground = opts.adaptiveSource;
+  if (opts.maskableSource) source.maskable = opts.maskableSource;
+  if (opts.monochromeSource) source.monochrome = opts.monochromeSource;
   return mergeConfig(config, { mark: { source } });
 }
 
 function prepareAppleContext(cwd, opts, config, warnings, discovery) {
   const scanned = projectScan(cwd, discovery);
+  const deliveryMode = resolveAppleDeliveryMode(cwd, config, warnings, scanned);
+  if (deliveryMode === 'icon-composer') {
+    const err = new Error(
+      'icon-maker: Apple Icon Composer delivery uses the existing approved .icon artifact; ' +
+      'run --check to verify it, or set apple.deliveryMode to legacy to compile an AppIcon asset catalog',
+    );
+    err.exitCode = 2;
+    throw err;
+  }
   const appIconSet = resolveAppleAppIconSet(cwd, config, warnings, scanned);
   const catalog = opts.outDir
     ? path.resolve(cwd, opts.outDir, 'apple', 'Assets.xcassets')
@@ -219,7 +237,73 @@ function prepareAppleContext(cwd, opts, config, warnings, discovery) {
   assertContainedOutputPath(cwd, path.join(catalog, `${appIconSet}.appiconset`, 'Contents.json'));
   const generatedContents = TARGETS.apple.files.find((file) => file.format === 'json').contents;
   const contents = mergeAppleContents(catalog, appIconSet, generatedContents);
-  return { appIconSet, catalog, contents };
+  return { deliveryMode, appIconSet, catalog, contents };
+}
+
+function prepareAndroidContext(cwd, opts, config, discovery, sources) {
+  const project = resolveAndroidProject(cwd, config, androidProjectScan(cwd, discovery));
+  const manifest = path.resolve(cwd, project.relativeManifest);
+  const resDir = path.join(path.dirname(manifest), 'res');
+  const backgroundColor = config.android?.backgroundColor || opaqueBackground(config.mark?.background);
+  const files = planAndroidIconFiles({
+    ...(config.android || {}),
+    backgroundColor,
+    includeMonochrome: Boolean(sources.monochrome),
+  });
+  const outputRoot = opts.outDir
+    ? path.resolve(cwd, opts.outDir, 'android')
+    : resDir;
+  assertContainedOutputPath(cwd, path.join(outputRoot, 'values', 'icon-maker-probe.xml'));
+  return { ...project, manifest, resDir, backgroundColor, files };
+}
+
+function addWarningsOnce(warnings, additions) {
+  for (const warning of additions) {
+    if (!warnings.some((item) => item.code === warning.code && item.message === warning.message)) {
+      warnings.push(warning);
+    }
+  }
+}
+
+function preparePwaContext(cwd, opts, config, warnings) {
+  const diagnostics = [];
+  const resolved = resolvePwaManifest(cwd, config, diagnostics);
+  addWarningsOnce(
+    warnings,
+    diagnostics
+      .filter((item) => item.severity === 'warning')
+      .map(({ code, message }) => ({ code, message })),
+  );
+  const publicRoot = resolved.publicRoot || path.join(cwd, 'public');
+  const outputRoot = opts.outDir
+    ? path.resolve(cwd, opts.outDir, 'pwa', 'public')
+    : publicRoot;
+  assertContainedOutputPath(cwd, path.join(outputRoot, 'icon-maker-probe.png'));
+  return { ...resolved, publicRoot };
+}
+
+function targetFiles(target, context) {
+  if (target === 'android') return context.targetContexts.get('android').files;
+  if (target === 'pwa') {
+    return planPwaIconFiles({
+      includeMaskable: Boolean(context.sources.maskable),
+      includeMonochrome: Boolean(context.sources.monochrome),
+    });
+  }
+  if (target === 'expo' && context.sources.monochrome) {
+    return [
+      ...TARGETS.expo.files,
+      {
+        path: 'assets/monochrome-icon.png',
+        size: 1024,
+        format: 'png',
+        transparentBackground: true,
+        role: 'monochrome',
+        sourceRole: 'monochrome',
+      },
+    ];
+  }
+  return TARGETS[target].files;
 }
 
 function prepareCompileContext(inputConfig, opts) {
@@ -233,11 +317,21 @@ function prepareCompileContext(inputConfig, opts) {
   const targets = resolveTargets(opts.targets || [], cwd, config.targets, discovery);
   const warnings = validateConfig(config);
   addAppleWarnings(config, targets, warnings);
+  const targetContexts = new Map();
+  if (targets.includes('apple')) {
+    targetContexts.set('apple', prepareAppleContext(cwd, opts, config, warnings, discovery));
+  }
+  const needsAdaptiveForeground = targets.includes('expo') || targets.includes('android');
   const sources = {
     default: loadSource(cwd, config),
-    adaptiveForeground: targets.includes('expo') ? loadSource(cwd, config, 'adaptive-foreground') : null,
+    adaptiveForeground: needsAdaptiveForeground ? loadSource(cwd, config, 'adaptive-foreground') : null,
+    maskable: targets.includes('pwa') ? loadSource(cwd, config, 'maskable') : null,
+    round: targets.includes('android') ? loadSource(cwd, config, 'round') : null,
+    monochrome: (targets.includes('android') || targets.includes('expo') || targets.includes('pwa'))
+      ? loadSource(cwd, config, 'monochrome')
+      : null,
   };
-  if (opts.placeholder && sources.default) {
+  if (opts.placeholder && Object.values(sources).some(Boolean)) {
     const err = new Error('icon-maker: --placeholder cannot be used when config already provides mark.source');
     err.exitCode = 2;
     throw err;
@@ -249,16 +343,30 @@ function prepareCompileContext(inputConfig, opts) {
       message: 'using the deterministic placeholder mark; replace it with an approved SVG or PNG before distribution',
     });
   }
-  addSourceWarnings(sources.default, targets, warnings);
-  addSourceWarnings(sources.adaptiveForeground, ['expo'], warnings);
-  if (targets.includes('expo') && sources.default && !sources.adaptiveForeground) {
-    warnings.push({
-      code: 'adaptive-source-missing',
-      message: 'Expo adaptive-icon foreground is reusing the default source; provide --adaptive-source or mark.source.adaptiveForeground for a transparent foreground',
-    });
+  if (sourceMode === 'source' && needsAdaptiveForeground && !sources.adaptiveForeground) {
+    const err = new Error(
+      'icon-maker: Expo/Android source mode requires a transparent adaptive foreground; ' +
+      'provide --adaptive-source or mark.source.adaptiveForeground',
+    );
+    err.exitCode = 2;
+    throw err;
   }
-  const targetContexts = new Map();
-  if (targets.includes('apple')) targetContexts.set('apple', prepareAppleContext(cwd, opts, config, warnings, discovery));
+  addSourceWarnings(sources.default, targets, warnings);
+  if (sources.adaptiveForeground) addSourceWarnings(sources.adaptiveForeground, targets.filter((target) => target === 'expo' || target === 'android'), warnings);
+  if (sources.maskable) {
+    addSourceWarnings(
+      sources.maskable,
+      ['pwa'],
+      warnings,
+      planPwaIconFiles({ includeMaskable: true }).filter((file) => file.role === 'maskable'),
+    );
+  }
+  if (sources.round) addSourceWarnings(sources.round, ['android'], warnings);
+  if (sources.monochrome) addSourceWarnings(sources.monochrome, targets.filter((target) => target === 'expo' || target === 'android' || target === 'pwa'), warnings);
+  if (targets.includes('android')) {
+    targetContexts.set('android', prepareAndroidContext(cwd, opts, config, discovery, sources));
+  }
+  if (targets.includes('pwa')) targetContexts.set('pwa', preparePwaContext(cwd, opts, config, warnings));
   return {
     cwd,
     opts,
@@ -278,7 +386,7 @@ function buildOutputPlan(context) {
 
   for (const target of targets) {
     const def = TARGETS[target];
-    for (const file of def.files) {
+    for (const file of targetFiles(target, context)) {
       const effectiveFile = target === 'apple' && file.format === 'json'
         ? { ...file, contents: targetContexts.get('apple').contents }
         : file;
@@ -312,6 +420,23 @@ function buildOutputPlan(context) {
 function renderOutputPlan(context, plans) {
   const render = createRenderer(context.config, context.sources);
   const renderedPlans = plans.map((plan) => ({ ...plan, contents: contentBuffer(render(plan.effectiveFile)) }));
+  for (const plan of renderedPlans) {
+    if (plan.file.format !== 'png' || plan.file.transparentBackground !== true) continue;
+    const inspected = inspectPng(plan.contents);
+    if (!inspected.valid || inspected.colorType !== 6 || inspected.hasTransparency !== true) {
+      const err = new Error(
+        `icon-maker: ${plan.target} ${plan.file.role || 'foreground'} output must contain transparent pixels: ` +
+        `${plan.absolutePath}`,
+      );
+      err.exitCode = 2;
+      throw err;
+    }
+    if (inspected.hasVisiblePixels !== true) {
+      const err = new Error(`icon-maker: ${plan.target} foreground output must contain visible pixels: ${plan.absolutePath}`);
+      err.exitCode = 2;
+      throw err;
+    }
+  }
   const outputsByPath = new Map();
   for (const plan of renderedPlans) {
     const previous = outputsByPath.get(plan.absolutePath);
@@ -329,28 +454,50 @@ function renderOutputPlan(context, plans) {
 }
 
 function writeOutputPlan(context, renderedPlans, plannedPreview) {
-  const { config, cwd, opts, targets, warnings, write } = context;
-  const produced = [];
-  for (const plan of renderedPlans) {
-    const written = write ? writeFileIfChanged(plan.absolutePath, plan.contents) : false;
-    produced.push({
-      target: plan.target,
-      label: plan.def.label,
+  const { config, cwd, opts, targetContexts, targets, warnings, write } = context;
+  const produced = renderedPlans.map((plan) => ({
+    target: plan.target,
+    label: plan.def.label,
+    path: plan.absolutePath,
+    format: plan.file.format,
+    size: plan.file.size,
+    sizes: plan.file.sizes,
+    role: plan.file.role || null,
+    sourceRole: plan.file.sourceRole || null,
+    written: false,
+  }));
+  if (!write) return { produced, patches: [], preview: null };
+
+  const patchPlan = opts.patch
+    ? planPatches(cwd, targets, produced, warnings, { config, targetContexts })
+    : { patches: [], writes: [] };
+  const previewContents = plannedPreview
+    ? renderPreviewHtml(cwd, plannedPreview, config, produced)
+    : null;
+  const writes = [
+    ...renderedPlans.map((plan) => ({
       path: plan.absolutePath,
-      format: plan.file.format,
-      size: plan.file.size,
-      sizes: plan.file.sizes,
-      role: plan.file.role || null,
-      written,
-    });
+      contents: plan.contents,
+      label: `${plan.target} output`,
+    })),
+    ...patchPlan.writes,
+  ];
+  if (plannedPreview) {
+    writes.push({ path: plannedPreview, contents: previewContents, label: 'preview output' });
   }
 
-  const patches = write && opts.patch ? applyPatches(cwd, targets, produced, warnings) : [];
-  let preview = null;
-  if (plannedPreview) {
-    const written = writeFileIfChanged(plannedPreview, renderPreviewHtml(cwd, plannedPreview, config, produced));
-    preview = { path: plannedPreview, format: 'html', written };
+  const results = commitWriteTransaction(cwd, writes);
+  for (let index = 0; index < renderedPlans.length; index++) {
+    produced[index].written = results[index].written;
   }
+  const patchResults = results.slice(renderedPlans.length, renderedPlans.length + patchPlan.writes.length);
+  const writtenPatches = new Set(
+    patchResults.filter((result) => result.written).map((result) => result.path),
+  );
+  const patches = patchPlan.patches.filter((patch) => writtenPatches.has(path.resolve(patch.file)));
+  const preview = plannedPreview
+    ? { path: plannedPreview, format: 'html', written: results.at(-1).written }
+    : null;
   return { produced, patches, preview };
 }
 
@@ -360,12 +507,19 @@ function makeIcons(inputConfig = null, opts = {}) {
   const renderedPlans = renderOutputPlan(context, plans);
   const { produced, patches, preview } = writeOutputPlan(context, renderedPlans, plannedPreview);
   return {
+    schemaVersion: 1,
+    kind: 'compile',
     ok: true,
     cwd: context.cwd,
     targets: context.targets,
     sourceMode: context.sourceMode,
     source: sourceSummary(context.sources.default),
-    sourceVariants: { adaptiveForeground: sourceSummary(context.sources.adaptiveForeground) },
+    sourceVariants: {
+      adaptiveForeground: sourceSummary(context.sources.adaptiveForeground),
+      maskable: sourceSummary(context.sources.maskable),
+      round: sourceSummary(context.sources.round),
+      monochrome: sourceSummary(context.sources.monochrome),
+    },
     produced,
     patches,
     preview,

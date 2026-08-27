@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const { hasAppleProject } = require('./apple');
+const { hasAndroidProject, planAndroidIconFiles } = require('./android');
+const { discoverPwaManifestCandidates, planPwaIconFiles } = require('./pwa');
 
 const APPLE_APP_ICON_SPECS = [
   { filename: 'AppIcon-ios-1024.png', pixels: 1024, idiom: 'universal', platform: 'ios', size: '1024x1024' },
@@ -52,7 +54,7 @@ const TARGETS = {
     ],
   },
   expo: {
-    label: 'Expo / React Native',
+    label: 'Expo app',
     mark: { glyph: 'spark', shape: 'squircle', background: '#4630eb', foreground: '#ffffff', accent: '#a7f3d0' },
     patch: { type: 'expo' },
     files: [
@@ -61,14 +63,20 @@ const TARGETS = {
       { path: 'assets/icon.svg', size: 1024, format: 'svg' },
     ],
   },
+  android: {
+    label: 'Native Android app',
+    mark: { glyph: 'spark', shape: 'squircle', background: '#111827', foreground: '#ffffff', accent: '#a7f3d0' },
+    patch: { type: 'android' },
+    files: planAndroidIconFiles(),
+  },
   electron: {
     label: 'Electron app',
     mark: { glyph: 'bolt', shape: 'squircle', background: '#1f2937', foreground: '#f9fafb', accent: '#fbbf24' },
-    patch: { type: 'package-icon', basename: 'icon.png' },
+    patch: { type: 'electron' },
     files: [
       { path: 'assets/icon.png', size: 1024, format: 'png' },
       { path: 'assets/icon.ico', sizes: [16, 32, 48, 256], format: 'ico' },
-      { path: 'assets/icon.icns', sizes: [128, 256, 512, 1024], format: 'icns' },
+      { path: 'assets/icon.icns', sizes: [16, 32, 64, 128, 256, 512, 1024], format: 'icns' },
       { path: 'assets/icon.svg', size: 1024, format: 'svg' },
     ],
   },
@@ -85,12 +93,7 @@ const TARGETS = {
     label: 'Progressive web app',
     mark: { glyph: 'spark', shape: 'circle', background: '#0f766e', foreground: '#ffffff', accent: '#facc15' },
     patch: { type: 'pwa' },
-    files: [
-      { path: 'public/icon-192.png', size: 192, format: 'png' },
-      { path: 'public/icon-512.png', size: 512, format: 'png' },
-      { path: 'public/favicon.ico', sizes: [16, 32, 48], format: 'ico' },
-      { path: 'public/favicon.svg', size: 1024, format: 'svg' },
-    ],
+    files: planPwaIconFiles(),
   },
   'mcp-connector': {
     label: 'MCP connector submission',
@@ -131,12 +134,18 @@ function detectTargets(cwd, discovery = {}) {
   if (manifest?.manifest_version) found.push('browser-extension');
 
   const appJson = readJson(path.join(cwd, 'app.json'));
-  if (appJson?.expo || fs.existsSync(path.join(cwd, 'app.config.js'))) found.push('expo');
+  const isExpo = Boolean(
+    appJson?.expo
+    || fs.existsSync(path.join(cwd, 'app.config.js'))
+    || fs.existsSync(path.join(cwd, 'app.config.ts'))
+  );
+  if (isExpo) found.push('expo');
+  if (!isExpo && hasAndroidProject(cwd, discovery)) found.push('android');
 
   const pkg = readJson(path.join(cwd, 'package.json')) || {};
   if (pkg.engines?.vscode || pkg.contributes) found.push('vscode');
   if (hasPackageDependency(pkg, 'electron') || hasPackageDependency(pkg, 'electron-builder')) found.push('electron');
-  if (fs.existsSync(path.join(cwd, 'public', 'manifest.json'))) found.push('pwa');
+  if (discoverPwaManifestCandidates(cwd).length) found.push('pwa');
   if (fs.existsSync(path.join(cwd, 'server.json'))) found.push('mcp-connector');
 
   return [...new Set(found.length ? found : ['generic'])];

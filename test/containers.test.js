@@ -19,4 +19,17 @@ describe('icon containers', () => {
     assert.equal(icns.subarray(0, 4).toString('ascii'), 'icns');
     assert.equal(icns.subarray(8, 12).toString('ascii'), 'ic07');
   });
+
+  test('encodes the complete modern PNG-backed ICNS size matrix', () => {
+    const png = Buffer.concat([PNG_SIGNATURE, Buffer.from('fake')]);
+    const sizes = [16, 32, 64, 128, 256, 512, 1024];
+    const icns = encodeIcns(sizes.map((size) => ({ size, png })));
+    const types = [];
+    let offset = 8;
+    while (offset < icns.length) {
+      types.push(icns.subarray(offset, offset + 4).toString('ascii'));
+      offset += icns.readUInt32BE(offset + 4);
+    }
+    assert.deepEqual(types, ['icp4', 'icp5', 'icp6', 'ic07', 'ic08', 'ic09', 'ic10']);
+  });
 });

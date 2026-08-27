@@ -18,6 +18,7 @@
     "README.md",
     "README.ko.md",
     "CHANGELOG.md",
+    "TODO.md",
     "SECURITY.md",
     "LICENSE"
   ],
@@ -35,6 +36,7 @@
     "icons",
     "app-icon",
     "apple",
+    "android",
     "xcode",
     "asset-catalog",
     "browser-extension",
@@ -42,6 +44,7 @@
     "electron",
     "vscode",
     "pwa",
+    "adaptive-icon",
     "mcp",
     "starter-series"
   ],

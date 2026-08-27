@@ -14,6 +14,7 @@ describe('source acquisition workflow', () => {
       accepted: ['png', 'svg'],
       minimumRasterSize: 1024,
       variants: ['default'],
+      optionalVariants: ['maskable', 'monochrome'],
     });
     const workflow = sourceAcquisitionWorkflow(['expo']);
     assert.equal(workflow.state, 'needs-direction');
@@ -31,6 +32,13 @@ describe('source acquisition workflow', () => {
     assert.equal(workflow.compileOnlyAfterApproval, true);
     assert.equal(workflow.noFallbackSvgSynthesis, true);
     assert.deepEqual(workflow.sourceContract.variants, ['default', 'adaptiveForeground']);
+    assert.deepEqual(
+      sourceAcquisitionWorkflow(['android']).sourceContract.variants,
+      ['default', 'adaptiveForeground'],
+    );
+    assert.deepEqual(sourceContract(['android', 'expo', 'pwa']).optionalVariants,
+      ['maskable', 'round', 'monochrome']);
+    assert.deepEqual(sourceContract(['generic']).optionalVariants, []);
   });
 
   test('reviews discovered brand evidence before asking for new direction', () => {

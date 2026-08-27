@@ -239,6 +239,7 @@ function resizeRgba(sourceWidth, sourceHeight, rgba, targetWidth, targetHeight) 
 }
 
 module.exports = {
+  crc32,
   encodePng,
   encodeRgbPng,
   rasterizePrimitives,

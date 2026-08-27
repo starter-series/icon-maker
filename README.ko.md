@@ -4,7 +4,7 @@
 
 **하나의 디자인을 배포용 아이콘과 프로젝트 연결 정보로 컴파일합니다.**
 
-Xcode Asset Catalog · 앱 아이콘 · 확장 manifest · package 아이콘 · PWA 아이콘. 하나의 컴파일러.
+Xcode Asset Catalog · Android resource · 확장 manifest · desktop container · PWA 아이콘. 하나의 컴파일러.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Node >= 22](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](.nvmrc)
@@ -21,6 +21,10 @@ Xcode Asset Catalog · 앱 아이콘 · 확장 manifest · package 아이콘 · 
 
 ## 상태와 범위
 
+전체 고도화 계획은 아직 완료되지 않았습니다. 구현 범위와 잔여 항목은
+[TODO.md](TODO.md)에 구분했습니다. `--check`는 산출물 구조와 설정 연결을
+검사하며, 원본 대비 최신성이나 시각적 접근성을 보증하지 않습니다.
+
 - **Pre-release** — 패키지는 구현되어 있고 `npm pack --dry-run`까지
   통과하며 public source repo로도 열려 있습니다. 다만 아직
   `iconkit`은 npm에 publish되지 않았습니다. 아래 명령은
@@ -28,10 +32,12 @@ Xcode Asset Catalog · 앱 아이콘 · 확장 manifest · package 아이콘 · 
 - **현재 구현됨** — 특정 디자인 공급자에 종속되지 않는 배포용 아이콘
   컴파일러입니다. 구조화된 디자인 의도/source workflow, target 제약,
   제한된 로컬 brand 근거 탐색, 분리된 방향 및 artwork 승인 단계,
-  SVG/PNG 직접 전달, Xcode용 Apple AppIcon catalog, `apple`,
-  `browser-extension`, `expo`, `electron`,
-  `vscode`, `pwa`, `mcp-connector`, `generic` target, ICO/ICNS, preview,
-  target 자동 감지, JSON 출력, 선택적 manifest/package patch를 지원합니다.
+  SVG/PNG 직접 전달, Xcode용 Apple AppIcon catalog, 기존 Icon Composer
+  artifact 검증, native Android launcher resource, `apple`, `android`,
+  `browser-extension`, `expo`, `electron`, `vscode`, `pwa`, `mcp-connector`,
+  `generic` target, ICO/ICNS, preview, target 자동 감지, versioned JSON,
+  보수적인 project wiring, rollback 가능한 다중 파일 쓰기, 읽기 전용
+  `--check`/`--strict` 검증을 지원합니다.
 - **설계 의도** — 아이콘 의도는 프로젝트별 결정이므로 `icon-maker.config.js` 또는 데이터 전용 `icon-maker.config.json`에 둡니다. 플랫폼별 파일명과 manifest 연결은 도구가 기계적으로 처리합니다.
 - **하지 않기로 한 것** — 오프라인 CLI는 AI 로고 생성, 브랜딩 전략,
   맞춤 일러스트를 직접 소유하지 않습니다. 에이전트는 상류에서 사용 가능한
@@ -40,11 +46,17 @@ Xcode Asset Catalog · 앱 아이콘 · 확장 manifest · package 아이콘 · 
 
 ## 로컬 사용
 
+외부 `electron-builder.*` 설정이나 package script의 명시적 config 선택이
+있으면 `package.json.build`를 새로 만들지 않고 미검증 경고를 반환합니다.
+여러 파일 쓰기는 포착된 실패에 대해 롤백하지만, 프로세스 강제 종료·전원
+차단까지 복구하거나 동시 읽기에 전체 배치의 원자성을 보장하지는 않습니다.
+
 ```bash
 npm install
 node bin/icon-maker.js --brief --target apple,browser-extension,pwa
 node bin/icon-maker.js --placeholder --target auto --dry-run --json
 node bin/icon-maker.js --placeholder --target generic --out-dir .tmp-icon-preview --preview --json
+node bin/icon-maker.js --target generic --out-dir .tmp-icon-preview --check --strict --json
 rm -rf .tmp-icon-preview
 ```
 
@@ -157,6 +169,21 @@ node bin/icon-maker.js --source ./brand/icon.png \
   --target expo --preview --json
 ```
 
+native Android도 별도 adaptive foreground를 요구하며, 승인된 경우에만 round 및
+Android 13 monochrome 원본을 추가합니다. PWA `maskable`도 기본 아이콘에서
+추론하지 않고 safe zone을 검토한 별도 원본으로만 생성합니다.
+
+```bash
+node bin/icon-maker.js --source ./brand/icon.png \
+  --adaptive-source ./brand/icon-adaptive.png \
+  --monochrome-source ./brand/icon-monochrome.png \
+  --target android --patch --json
+node bin/icon-maker.js --source ./brand/icon.png \
+  --maskable-source ./brand/icon-maskable.png \
+  --target pwa --patch --json
+node bin/icon-maker.js --target auto --check --strict --json
+```
+
 ### 프로젝트에 의도를 유지하는 설정
 
 `icon-maker.config.js`:
@@ -185,15 +212,27 @@ module.exports = {
     source: {
       default: './brand/icon.png',
       adaptiveForeground: './brand/icon-adaptive.png',
+      maskable: './brand/icon-maskable.png',
+      round: './brand/icon-round.png',
+      monochrome: './brand/icon-monochrome.png',
     },
     // 투명 원본을 Apple용으로 flatten할 때 사용:
     background: '#111827',
   },
   // Xcode 경로가 모호하거나 새 set이 필요할 때만 명시:
   // apple: {
+  //   deliveryMode: 'auto', // auto | legacy | icon-composer
   //   assetCatalog: './MyApp/Assets.xcassets',
   //   appIconSet: 'AppIcon',
+  //   iconComposer: './Brand/AppIcon.icon',
   // },
+  // android: {
+  //   manifest: './app/src/main/AndroidManifest.xml',
+  //   resourceName: 'ic_launcher',
+  //   roundResourceName: 'ic_launcher_round',
+  //   backgroundColor: '#111827',
+  // },
+  // pwa: { manifest: './public/manifest.webmanifest' },
   targets: ['auto'],
 };
 ```
@@ -217,17 +256,30 @@ config 방향은 `concept`, 하나 이상의 `mood`, `design.approved: true`가 
 | Target | Outputs |
 |---|---|
 | `apple` | 감지한 Xcode App Icon set: RGB iOS 1024 원본, macOS 전체 크기, `Contents.json` |
+| `android` | density별 legacy/round/adaptive PNG, v26/v33 XML, background color resource |
 | `browser-extension` | `assets/icons/icon16.png`, `icon32.png`, `icon48.png`, `icon128.png`, `icon.svg` |
-| `expo` | `assets/icon.png`, 투명 foreground `assets/adaptive-icon.png`, `assets/icon.svg` |
-| `electron` | `assets/icon.png`, `assets/icon.ico`, `assets/icon.icns`, `assets/icon.svg` |
+| `expo` | `assets/icon.png`, 투명 `adaptive-icon.png`, 선택적 `monochrome-icon.png`, `icon.svg` |
+| `electron` | `assets/icon.png`, multi-size `icon.ico`, 전체 modern PNG-backed `icon.icns`, `icon.svg` |
 | `vscode` | `assets/icon.png` (256), `assets/icon.svg` |
-| `pwa` | `public/icon-192.png`, `public/icon-512.png`, `public/favicon.ico`, `public/favicon.svg` |
+| `pwa` | manifest public root의 192/512, favicon, 선택적 승인 maskable/monochrome asset |
 | `mcp-connector` | `assets/icon.png` (1024), `assets/icon-512.png`, `assets/icon.svg` |
 | `generic` | `assets/icon.png`, `assets/icon.svg` |
 
-`--patch`를 주면 존재하는 manifest/config를 찾아 icon 경로를 갱신합니다.
-대상 파일이 없으면 JSON 결과에 `patch-target-missing` 경고가 포함됩니다.
-먼저 `--preview`로 생성물을 검토한 뒤 별도 명령에서 patch하는 흐름을 권장합니다.
+`--patch`는 extension manifest, native Android manifest, Expo app.json,
+electron-builder/정적 Forge 설정, VS Code package.json, 그리고 감지한
+`public`/`www` PWA manifest의 알려진 icon 필드만 갱신합니다. 동적 설정이나
+기존 비관리 경로는 덮어쓰지 않습니다. 먼저 `--preview`로 생성물을 검토한 뒤
+별도 명령에서 patch하는 흐름을 권장합니다.
+
+생성물·preview·지원되는 patch는 쓰기 전에 모두 계획되고 rollback 가능한 한
+transaction으로 commit됩니다. symlink 이탈, 충돌 출력, 잘못된 manifest가 있으면
+부분 결과를 남기지 않고 중단합니다. `--check`는 파일을 쓰지 않고 PNG CRC와
+해독된 scanline, 실제 foreground 투명도, ICO/ICNS 내부 PNG, 크기, Apple RGB,
+Icon Composer metadata/project 설정, Android XML 구조, manifest/package wiring,
+그리고 config 또는 저장된 wiring에서 확인되는 선택 역할 asset을 검사합니다.
+`--out-dir`에서는 staged asset만 검사하고 project wiring 생략 경고를 반환하므로
+`--strict`는 최종 위치에서 다시 검사하기 전까지 실패합니다. 오류는 exit `1`,
+usage 충돌은 exit `2`입니다.
 
 일회성 전달에는 `--source`, 프로젝트 설정에 경로를 유지하려면
 `mark.source`를 사용합니다. SVG 출력은 SVG 원본을 유지하고, PNG 입력은
@@ -249,8 +301,15 @@ target 출력을 분리해야 합니다.
 
 ## Apple과 Xcode
 
-`apple` target은 iOS와 macOS에서 Xcode가 컴파일할 수 있는 하나의 App Icon
-set을 생성합니다. `project.pbxproj`의 `ASSETCATALOG_COMPILER_APPICON_NAME`이
+`apple` target에는 `legacy`와 `icon-composer` delivery mode가 있습니다.
+`legacy`는 iOS와 macOS에서 Xcode가 컴파일할 수 있는 하나의 App Icon set을
+생성합니다. `icon-composer`는 이미 승인된 `.icon` file/package를 pass-through
+artifact로 다루며 structured metadata, 참조 asset, Xcode file reference,
+일치하는 App Icon build setting을 검사할 뿐 재작성하거나 흉내 내지 않습니다.
+`auto`에서 Composer와 legacy set이 동시에 발견되면 추측하지 않고 명시적
+mode를 요구합니다.
+
+legacy mode에서는 `project.pbxproj`의 `ASSETCATALOG_COMPILER_APPICON_NAME`이
 하나로 명확하면 그 이름을 사용하고 Preview 전용 catalog는 제외합니다.
 production Asset Catalog가 정확히 하나면 그 위치에 기록합니다. 하나도 없으면
 루트에 `Assets.xcassets`를 만들고 Xcode에 추가해야 할 수 있다는 경고를
@@ -259,6 +318,7 @@ production Asset Catalog가 정확히 하나면 그 위치에 기록합니다. �
 ```js
 module.exports = {
   apple: {
+    deliveryMode: 'legacy',
     assetCatalog: './MyApp/Assets.xcassets',
     appIconSet: 'AppIcon',
   },
@@ -270,7 +330,9 @@ module.exports = {
 소유하지 않은 파일을 참조하면 덮어쓰지 않고 새 `apple.appIconSet` 이름을
 요구합니다. 빈 appearance slot과 metadata는 보존합니다. 외부 Apple 원본은
 `mark.background` 위에 flatten하고, Apple PNG는 alpha channel이 없는 RGB로
-인코딩합니다. 레이어 기반 Icon Composer 편집은 상류 디자인 단계입니다.
+인코딩합니다. 레이어 기반 Icon Composer 편집은 상류 디자인 단계입니다. 이미
+승인된 `.icon`이 있다면 `deliveryMode: 'icon-composer'`와 `iconComposer` 경로를
+설정한 뒤 `--check`를 사용합니다.
 
 ## Agent Surfaces
 

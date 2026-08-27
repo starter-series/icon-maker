@@ -8,30 +8,68 @@ const { resolveDirection, sourceAcquisitionWorkflow, sourceContract } = require(
 
 const TARGET_GUIDANCE = {
   apple: 'use full square artwork with no baked-in platform mask or rounded-corner clipping; keep key details away from the outer edge.',
+  android: 'use a full-square default source plus separately approved adaptiveForeground, optional round-specific, and optional Android 13 monochrome source roles; keep adaptive foreground key details inside the central 66 x 66 safe zone of its 108 x 108 layer, and never invent role variants from technical constraints.',
   'browser-extension': 'the mark must remain recognizable at 16, 32, 48, and 128 pixels.',
   expo: 'provide a centered mark that also works as an Android adaptive-icon foreground.',
   electron: 'support desktop use from 16 pixels through a 1024-pixel master.',
   vscode: 'keep the silhouette readable at 256 pixels and avoid fine text.',
-  pwa: 'support 192- and 512-pixel app icons plus favicon-scale rendering.',
+  pwa: 'support 192- and 512-pixel any-purpose icons plus favicon-scale rendering; only separately approved artwork may be labeled maskable or monochrome, and maskable key details must stay inside the central 40%-radius safe zone.',
   'mcp-connector': 'use a clear product symbol that remains legible in marketplace listings.',
   generic: 'create a reusable square master suitable for later platform compilation.',
 };
 
+function targetSourceRoles(target) {
+  if (target === 'android') {
+    return [
+      { name: 'default', required: true, approvalRequired: true },
+      {
+        name: 'adaptiveForeground',
+        required: true,
+        approvalRequired: true,
+        transparentBackground: true,
+        layerSize: '108x108',
+        safeZone: '66x66',
+      },
+      { name: 'round', required: false, approvalRequired: true, fallback: 'default' },
+      { name: 'monochrome', required: false, approvalRequired: true, minimumAndroidApi: 33 },
+    ];
+  }
+  if (target === 'pwa') {
+    return [
+      { name: 'default', required: true, approvalRequired: true, purpose: 'any' },
+      {
+        name: 'maskable',
+        required: false,
+        approvalRequired: true,
+        purpose: 'maskable',
+        safeZone: 'center circle with 40% radius',
+      },
+      { name: 'monochrome', required: false, approvalRequired: true, purpose: 'monochrome' },
+    ];
+  }
+  return undefined;
+}
+
 function technicalConstraints(targets) {
-  return targets.map((target) => ({
-    target,
-    label: TARGETS[target].label,
-    guidance: TARGET_GUIDANCE[target],
-    outputs: TARGETS[target].files.map((file) => ({
-      path: file.path,
-      format: file.format,
-      size: file.size,
-      sizes: file.sizes,
-      role: file.role || 'default',
-      opaqueBackground: file.opaqueBackground === true,
-      transparentBackground: file.transparentBackground === true,
-    })),
-  }));
+  return targets.map((target) => {
+    const constraint = {
+      target,
+      label: TARGETS[target].label,
+      guidance: TARGET_GUIDANCE[target],
+      outputs: TARGETS[target].files.map((file) => ({
+        path: file.path,
+        format: file.format,
+        size: file.size,
+        sizes: file.sizes,
+        role: file.role || 'default',
+        opaqueBackground: file.opaqueBackground === true,
+        transparentBackground: file.transparentBackground === true,
+      })),
+    };
+    const sourceRoles = targetSourceRoles(target);
+    if (sourceRoles) constraint.sourceRoles = sourceRoles;
+    return constraint;
+  });
 }
 
 function resolveBriefConfig(inputConfig, cwd, explicitConfig, targets) {
@@ -129,14 +167,32 @@ function renderDesignBrief(config, targets, direction, brandContext) {
     targets.includes('expo')
       ? '- Also provide a separate 1024 x 1024 transparent PNG containing only the centered adaptive foreground mark. A native vector SVG is also accepted.'
       : null,
+    targets.includes('android')
+      ? '- Also provide a separately approved transparent adaptiveForeground source designed as a 108 x 108 layer, with all key details inside the central 66 x 66 safe zone.'
+      : null,
+    targets.includes('android')
+      ? '- Provide round artwork only when it is intentionally different from the default source, and provide Android 13 monochrome artwork only as a separately approved single-color source; never derive either role from technical constraints.'
+      : null,
+    targets.includes('pwa')
+      ? '- Provide PWA maskable or monochrome artwork only as separately approved source roles. Keep all essential maskable details inside the centered circle whose radius is 40% of the canvas.'
+      : null,
     '- Native SVG must use embedded vector shapes and fills/strokes without remote fonts, linked images, scripts, or event handlers.',
     '- Do not include explanatory text, mockups, device frames, drop shadows outside the canvas, or multiple icon candidates in the final asset.',
     '- Avoid words and fine lettering unless a letterform is essential to the product identity.',
     '- Do not infer that an unspecified palette or visual style represents approved brand intent.',
   ].filter(Boolean);
-  const returnInstruction = targets.includes('expo')
-    ? '- Return two clearly named finished image files: `icon.png` and `icon-adaptive.png` (or native vector equivalents).'
-    : '- Return one finished image file. Prefer PNG from an image-generation model; use SVG only when it is native vector artwork.';
+  const returnInstructions = [];
+  if (targets.includes('android')) {
+    returnInstructions.push('- Return clearly named `icon.png` and `icon-adaptive.png` files. Include `icon-round.png` or `icon-monochrome.png` only when that separate source role was explicitly approved.');
+  } else if (targets.includes('expo')) {
+    returnInstructions.push('- Return two clearly named finished image files: `icon.png` and `icon-adaptive.png` (or native vector equivalents).');
+  }
+  if (targets.includes('pwa')) {
+    returnInstructions.push('- Return `icon-maskable.png` or `icon-monochrome.svg` only when that distinct PWA artwork role was explicitly approved; do not relabel the default icon.');
+  }
+  if (!returnInstructions.length) {
+    returnInstructions.push('- Return one finished image file. Prefer PNG from an image-generation model; use SVG only when it is native vector artwork.');
+  }
   const compositionChecks = [
     '- Keep the main symbol centered with generous breathing room.',
     '- Make the core idea identifiable at 16 pixels.',
@@ -145,7 +201,7 @@ function renderDesignBrief(config, targets, direction, brandContext) {
       : null,
     '- Avoid trademarked logos, copyrighted characters, and replicas of platform hardware.',
     '- If finished image generation is unavailable, do not substitute a schematic SVG assembled from generic circles, boxes, arrows, or UI symbols.',
-    returnInstruction,
+    ...returnInstructions,
   ].filter(Boolean);
 
   return `# Master icon design brief: ${projectName}

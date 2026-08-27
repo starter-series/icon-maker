@@ -8,14 +8,25 @@
  */
 
 const path = require('path');
-const { makeIcons } = require('../src');
+const { checkIcons, makeIcons } = require('../src');
 const { makeDesignBrief } = require('../src/brief');
 const { USAGE, parseArgs, initConfig, configStatus } = require('../src/cli');
 const directStdoutWrite = process.stdout.write.bind(process.stdout);
 
 function writeResult(opts, result) {
   if (opts.json) directStdoutWrite(`${JSON.stringify(result)}\n`);
-  else if (result.ok) {
+  else if (result.kind === 'check') {
+    for (const item of result.diagnostics) {
+      const line = `[icon-maker] ${item.severity} ${item.code}: ${item.message}`;
+      if (item.severity === 'error') console.error(line);
+      else console.warn(line);
+    }
+    const status = result.ok ? 'ok' : 'failed';
+    console.log(
+      `[icon-maker] check ${status}: ${result.summary.artifacts} artifacts, ` +
+      `${result.summary.errors} errors, ${result.summary.warnings} warnings`,
+    );
+  } else if (result.ok) {
     if (result.kind === 'source-request') {
       directStdoutWrite(result.prompt.endsWith('\n') ? result.prompt : `${result.prompt}\n`);
       return;
@@ -76,11 +87,26 @@ async function main() {
     return;
   }
 
+  if (opts.check) {
+    const result = checkIcons(null, {
+      cwd,
+      config: opts.config,
+      targets: opts.targets,
+      outDir: opts.outDir,
+      strict: opts.strict,
+    });
+    writeResult(opts, result);
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
+
   const result = makeIcons(null, {
     cwd,
     config: opts.config,
     source: opts.source,
     adaptiveSource: opts.adaptiveSource,
+    maskableSource: opts.maskableSource,
+    monochromeSource: opts.monochromeSource,
     placeholder: opts.placeholder,
     targets: opts.targets,
     outDir: opts.outDir,
